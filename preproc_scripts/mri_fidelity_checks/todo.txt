@@ -1,0 +1,27 @@
+* update documentation: passing output dir argument
+* test incremental fidelity checks when adding new task
+* should detect if there have been changes to the fields. If a header is added to fidelity template, this will make the data in the tsv files useless
+* If user does not specify a set of subjects, ask if they want to run it on all, if so, just overwrite the files.
+* streamline code
+* integrate fidelity checks with other parts of the preprocessing pipeline
+* email problems using unix mail system
+
+DONE:
+* merge nifti and json tables into one
+* T1_w --> he will send me more comphrensive template data
+* check accuracy of code
+* script to rotate it subject wise --> checks output querying subjects
+	incremental - specify range of subject comma sep list
+	ID numbers can be non-contiguous
+* way to specify specific subject to comapre on: run fidelity checks incrementally on a specific set
+	integrate new data from a subset into the existing files
+	PANDA data frames in python
+		match merging on data sets
+* expected vs observed in the fidelity output
+* output all errors in a list item
+* test new checking format for correctness
+	[X] 65 T1w series description is failing the check but does not show in substatus output
+* way to specify specific subject to comapre on: run fidelity checks incrementally on a specific set
+* commit and consolidate code to gitlab
+* create documentation either in code or separate
+* bash wrapper script for feeder

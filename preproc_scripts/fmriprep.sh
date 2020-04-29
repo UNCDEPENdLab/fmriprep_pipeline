@@ -7,7 +7,7 @@
 #PBS -j oe
 
 
-source /gpfs/group/mnh5174/default/NeuroMAP/preproc_scripts/fmriprep_wrapper.sh /gpfs/group/mnh5174/default/NeuroMAP/bids/ /gpfs/group/mnh5174/default/NeuroMAP/MR_Proc/ participant --participant_label $sub --nthreads 8 -w /gpfs/group/mnh5174/default/NeuroMAP/fmriprep_tempfiles
+source /gpfs/group/mnh5174/default/Daniel/s4_mri/preproc_scripts/fmriprep_wrapper.sh ${loc_root}/bids/ ${loc_mrproc_root}/ participant --participant_label $sub --nthreads 8 -w ${loc_root}/fmriprep_tempfiles #--use-plugin /gpfs/group/mnh5174/default/Daniel/s4_mri/preproc_scripts
 
 #add --low-mem?
 #add --mem-mb?

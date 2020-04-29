@@ -9,6 +9,6 @@
 
 source /gpfs/group/mnh5174/default/lab_resources/ni_path.bash
 
-heudiconv -d /gpfs/group/mnh5174/default/NeuroMAP/MR_Raw/{subject}/*/*.dcm -s $sub -f /gpfs/group/mnh5174/default/NeuroMAP/preproc_scripts/nmap_heuristic.py -c dcm2niix -o /gpfs/group/mnh5174/default/NeuroMAP/bids -b
+heudiconv -d ${loc_mrraw_root}/{subject}/*/*.dcm -s $sub -f /gpfs/group/mnh5174/default/Daniel/s4_mri/preproc_scripts/nmap_heuristic.py -c dcm2niix -o ${loc_root}/bids -b
 
 

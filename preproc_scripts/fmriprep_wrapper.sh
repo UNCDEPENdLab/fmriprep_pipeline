@@ -7,6 +7,9 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
+LANG=en_US.UTF-8
+export LANG
+
 command -v deactivate >/dev/null 2>&1 && deactivate #exit existing virtual environment if active
 #module unload python #make sure no system python modules are loaded
 #module use /gpfs/group/mnh5174/default/sw/modules
@@ -17,6 +20,7 @@ command -v deactivate >/dev/null 2>&1 && deactivate #exit existing virtual envir
 #export SUBJECTS_DIR="$G/freesurfer_subjects"
 
 source /gpfs/group/mnh5174/default/lab_resources/ni_path.bash
+
 
 #activate fmriprep python environment
 source /gpfs/group/mnh5174/default/lab_resources/fmriprep_python/bin/activate

@@ -1,0 +1,31 @@
+config file for pipeline: $G/
+file transfer script
+rename_sync_scr_dirs --> renames the raw data folders automatically
+	tack on to the transfer script
+adding file transfering and some other preprocessing steps to preprocess.sh
+delete intermiediate files from fmriprep
+
+Outline:
+
+from /gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/syncMRCTR_Multiband
+ls $HOME/.ssh/controlmasters/*WPC-6290* 2>/dev/null 1>/dev/null || ./remote.expect
+what does this line do? Seems like it won't work unless the specific user running it has ssh configured in a certain way
+
+in syncMRCTR__MRRaw, those same lines are commented out
+
+renameSLEICSerDirs: shell script that renames the directories of the raw dicom data to something more human readable
+
+in preprocess.sh: converting transferred dicoms into niftis in bids format (heudiconv.sh), fidelity checks, quality checks, and fmriprep
+	input and output directories are hardcoded --> make sure to update
+
+Pipeline:
+
+transfer raw data (dicoms) from frmi machines to aci
+	/gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/autopreproc --> only parts of this command are needed for the new pipeline
+		sourcing of config files in /gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/cfg_files
+			neuromap_cfg? don't have access to it
+			syncMRCTR__MRRaw --> transfers raw data from fmri machines to aci. relies on env variables.
+rename raw data directories
+	renameSLEICSerDirs --> pass it the path to the directory
+preprocess (heudiconv, quality and fidelity checks, fmirprep)
+	
