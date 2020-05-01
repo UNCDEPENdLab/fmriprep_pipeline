@@ -25,7 +25,7 @@ source "$env_file" #setup relevant variables for this processing environment
 [ -z "${heudiconv_location}" ] && echo "No heudiconv_location variable set." && exit 1
 [ -z "${heudiconv_heuristic}" ] && echo "No heudiconv_heuristic variable set." && exit 1
 [ -z "${loc_mrraw_root}" ] && echo "No loc_mrraw_root variable set." && exit 1
-[ -z "${loc_root}" ] && echo "No loc_root variable set." && exit 1
+[ -z "${loc_bids_root}" ] && echo "No loc_bids_root variable set." && exit 1
 
 
 #source /gpfs/group/mnh5174/default/lab_resources/ni_path.bash
@@ -33,4 +33,5 @@ source "$env_file" #setup relevant variables for this processing environment
 ####
 #run heudiconv
 [[ "$debug_pipeline" -eq 1 ]] && rel_suffix=c #if debug_pipeline is 1, only echo command to log, don't run it
-rel "${heudiconv_location} -d ${loc_mrraw_root}/{subject}/*/*.dcm -s $sub -f ${heudiconv_heuristic} -c dcm2niix -o ${loc_root}/bids -b" $rel_suffix
+rel "${heudiconv_location} -d ${loc_mrraw_root}/{subject}/*/*.dcm -s $sub -f ${heudiconv_heuristic} -c dcm2niix -o ${loc_bids_root} -b" $rel_suffix
+rel "${pipedir}/add_intendedfor_bold ${loc_bids_root}/sub-${sub}" $rel_suffix #add IntendedFor field to FMAP jsons, pointing to all BOLD

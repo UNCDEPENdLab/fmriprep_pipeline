@@ -81,7 +81,7 @@ for sdir in $subdirs; do
     #If they don't yet have BIDS data, run them through the full pipeline, enforcing dependency on BIDS conversion
     if [ ! -d "${loc_root}/bids/sub-${sub}" ]; then
 	heudiconv_cmd="qsub $( build_qsub_string walltime=$heudiconv_walltime ) \
-			    -v $( envpass sub loc_root loc_mrraw_root log_file pipedir heudiconv_location heudiconv_heuristic debug_pipeline ) qsub_heudiconv_subject.sh"
+			    -v $( envpass sub loc_bids_root loc_mrraw_root log_file pipedir heudiconv_location heudiconv_heuristic debug_pipeline ) qsub_heudiconv_subject.sh"
 	
 	if [ "$rel_suffix" == "c" ]; then
 	    #run in debug mode

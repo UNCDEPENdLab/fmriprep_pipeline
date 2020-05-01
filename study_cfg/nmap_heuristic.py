@@ -46,7 +46,7 @@ def infotodict(seqinfo):
         if (s.dim4 == 1) and ('spott_ins_SBRef' in s.series_description):
             info[spott_ins_sbref].append({'item': s.series_id})
 
-	if (s.dim4 == 483) and ('spott_pit' in s.protocol_name):
+        if (s.dim4 == 483) and ('spott_pit' in s.protocol_name):
             info[spott_pit].append({'item': s.series_id})
         if (s.dim4 == 1) and ('spott_pit_SBRef' in s.series_description):
             info[spott_pit_sbref].append({'item': s.series_id})
