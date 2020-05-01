@@ -1,15 +1,11 @@
 #!/bin/bash
 
+set -ex
+#Default PBS requests if not overridden on qsub command line
 #PBS -l nodes=1:ppn=1
-#PBS -l walltime=${heudiconv_walltime}
-#PBS -A ${qsub_allocation}
-#PBS -M ${qsub_email}
+#PBS -l walltime=2:00:00
+#PBS -A mnh5174_c_g_sc_default
 #PBS -j oe
-
-#temp cache while testing environment passthrough
-# -A mnh5174_c_g_sc_default
-# -M dpp5430@psu.edu
-# -l walltime=2:00:00
 
 #source /gpfs/group/mnh5174/default/lab_resources/ni_path.bash
 source $( dirname "$0" )/environment.cfg #need this to be dynamic, or assume things have already been passed in

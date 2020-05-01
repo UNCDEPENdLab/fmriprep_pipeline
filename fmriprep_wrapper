@@ -1,8 +1,7 @@
 #!/bin/bash
-
 set -e
 if [ $# -eq 0 ]; then
-    echo "fmriprep_wrapper loads the proper python environment and executes fmriprep. It expects a full call to fmriprep."
+    echo "fmriprep_wrapper loads the proper python virtual environment and executes fmriprep. It expects a full call to fmriprep."
     echo "Example: fmriprep_wrapper --n_cpus 8 --verbose --output-space template --write-graph --participant_label 040 --use-aroma -w work bids output participant"
     exit 1
 fi
@@ -10,9 +9,13 @@ fi
 LANG=en_US.UTF-8
 export LANG
 
-#setup repo environment
+#setup compute environment
 script_dir=$( dirname "$0" )
-source "${script_dir}/environment.cfg" #setup relevant variables for this environment
+
+#in principle, we could pass all environment variables in with -v
+[ -z "$env_file" ] && env_file="${script_dir}/compute_environment.cfg" #set default
+[ ! -r "$env_file" ]  && echo "Cannot access config file ${env_file}" && exit 1
+source "$env_file" #setup relevant variables for this processing environment
 
 command -v deactivate >/dev/null 2>&1 && deactivate #exit existing virtual environment if active
 command -v module >/dev/null 2>&1 && module unload python #make sure no system python modules are loaded    
@@ -32,4 +35,4 @@ export SUBJECTS_DIR="$G/freesurfer_subjects"
 #activate fmriprep python environment
 source "${fmriprep_virtualenv}/bin/activate"
 
-fmriprep "$@" #pass all arguments forward
+"${fmriprep_virtualenv}/bin/fmriprep" "$@" #pass all arguments forward
