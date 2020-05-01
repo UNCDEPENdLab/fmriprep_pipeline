@@ -11,10 +11,11 @@ export LANG
 
 #setup compute environment
 script_dir=$( dirname "$0" )
+source "${script_dir}/pipeline_functions"
 
 #in principle, we could pass all environment variables in with -v
 [ -z "$env_file" ] && env_file="${script_dir}/compute_environment.cfg" #set default
-[ ! -r "$env_file" ]  && echo "Cannot access config file ${env_file}" && exit 1
+[ ! -r "$env_file" ]  && echo "Cannot access compute config file ${env_file}" && exit 1
 source "$env_file" #setup relevant variables for this processing environment
 
 command -v deactivate >/dev/null 2>&1 && deactivate #exit existing virtual environment if active

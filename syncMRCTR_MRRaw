@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -e
 
 #this script depends on key environment variables already being sourced externally (see preprocess_study.sh)
 
@@ -14,25 +14,26 @@ set -ex
 
 #remote_mrraw_root="${1}"
 #local_dir="${2}"
-#remote_subid_regex="${3}"
-#remote_subid_regex="${4}"
+#subid_regex="${3}"
+#subid_regex="${4}"
 
 [ -z "${remote_host}" ] && echo "Expect remote_host variable to be set in environment" && exit 1
 [ -z "${remote_mrraw_root}" ] && echo "Expect remote_mrraw_root variable to be set in environment" && exit 1
 [ -z "${remote_folder_depth}" ] && remote_folder_depth=1 #how many subfolders beneath remote_mrraw_root to look for subjects
-[ -z "${remote_subid_regex}" ] && echo "Expect remote_subid_regex variable to be set in environment" && exit 1
+[ -z "${subid_regex}" ] && echo "Expect subid_regex variable to be set in environment" && exit 1
 [ -z "${loc_mrraw_root}" ] && echo "Expect loc_mrraw_root variable to be set in environment" && exit 1
 
-[ ! -d "${loc_mrraw_root}" ] && echo "Cannot find local dir: ${loc_mrraw_root}" && exit 1
+#[ ! -d "${loc_mrraw_root}" ] && echo "Cannot find local dir: ${loc_mrraw_root}" && exit 1
+[ ! -d "${loc_mrraw_root}" ] && echo "Creating local dir: ${loc_mrraw_root}" && mkdir "${loc_mrraw_root}"
 
 [ ! -f "${loc_mrraw_root}/mrraw_dircache" ] && touch "${loc_mrraw_root}/mrraw_dircache" #create empty directory cache if not in place
 
 #obtain list of subject directories on remote
 if [ -n "${remote_folder_filter}" ]; then
     #filter out a specific regex pattern (typically folders) on remote host that indicate data not to be copied
-    ssh ${remote_host} "find ${remote_mrraw_root} -mindepth ${remote_folder_depth} -maxdepth ${remote_folder_depth} -type d" | grep -Ev "${remote_folder_filter}" | grep -E "${remote_subid_regex}" | sort > "${loc_mrraw_root}/mrraw_dirlist"
+    ssh ${remote_host} "find ${remote_mrraw_root} -mindepth ${remote_folder_depth} -maxdepth ${remote_folder_depth} -type d" | grep -Ev "${remote_folder_filter}" | grep -E "${subid_regex}" | sort > "${loc_mrraw_root}/mrraw_dirlist"
 else
-    ssh ${remote_host} "find ${remote_mrraw_root} -mindepth ${remote_folder_depth} -maxdepth ${remote_folder_depth} -type d" | grep -E "${remote_subid_regex}" | sort > "${loc_mrraw_root}/mrraw_dirlist"
+    ssh ${remote_host} "find ${remote_mrraw_root} -mindepth ${remote_folder_depth} -maxdepth ${remote_folder_depth} -type d" | grep -E "${subid_regex}" | sort > "${loc_mrraw_root}/mrraw_dirlist"
 fi
 
 
