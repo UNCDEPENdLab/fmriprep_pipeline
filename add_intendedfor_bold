@@ -18,19 +18,43 @@ if (length(args) == 0L) { stop("Expect at least one top-level subject directory"
 #needs to be a path to top of subject directory (can also be multiple paths)
 
 fpath <- args
-#fpath <- "/gpfs/group/mnh5174/default/lab_resources/installers/heudiconv/test/sub-040"
+#fpath <- "/gpfs/group/mnh5174/default/Michael/fmriprep_pipeline_test/bids/sub-048"
 
 if (!all(fex <- file.exists(fpath))) { stop("Cannot locate dir: ", fpath[!fex]) }
+
+cur_user <- Sys.info()[["user"]] #to verify paths
+
+make_writable <- function(file, user) {
+  ff <- file.info(file)
+  mode <- as.numeric(ff[["mode"]])
+
+  if (file.access(file, 2) == -1) {
+    if (ff[["uname"]] != user) {
+      #add group write permission
+      Sys.chmod(file, mode+20)
+    } else {
+      #add user write permission
+      Sys.chmod(file, mode+200)
+    }
+    return(mode) #for resetting
+  } else {
+    return(NULL)
+  }
+}
 
 for (fp in fpath) {  
   bold_files <- list.files(path=file.path(fp, "func"), pattern=".*_bold\\.nii\\.gz", full.names=TRUE)
   fmap_files <- list.files(path=file.path(fp, "fmap"), pattern=".*_epi\\.nii\\.gz", full.names=TRUE)
 
+  bold_rel <- sub(".*/sub-\\d+/(.*)$", "\\1", bold_files, perl=TRUE) #IntendedFor must be relative to subject path, starting with func/
   for (f in fmap_files) {
     jfile <- sub(".nii.gz", ".json", f, fixed=TRUE)
     j <- read_json(path=jfile)
-    j$IntendedFor <- bold_files
+    j$IntendedFor <- bold_rel
     message("In ", jfile, ", adding IntendedFor: ", paste(bold_files, collapse=", "))
+    #json file must be writeable; if not, chmod it
+    orig_mode <- make_writable(jfile, cur_user)
     write_json(j, path=jfile, pretty=TRUE, auto_unbox=TRUE, digits=NA)
+    if (!is.null(orig_mode)) { Sys.chmod(jfile, orig_mode) } #restore original permission
   }
 }

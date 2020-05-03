@@ -34,11 +34,11 @@ command -v module >/dev/null 2>&1 && module unload python #make sure no system p
 #these appear to be the immediate dependencies of mriqc
 [ -n "$torque_modules_root" ] && module use "$torque_modules_root"
 [ -n "$afni_module" ] && module load "$afni_module"
-[ -n "$fsl_module" ] && module load "$fsl_module"
+#[ -n "$fsl_module" ] && module load "$fsl_module"
 [ -n "$ants_module" ] && module load "$ants_module"
 
 #[ -n "$freesurfer_module" ] && module load "$freesurfer_module"
-#module load fsl/5.0.11 #Using version 6 of FSL creates problems
+module load fsl/5.0.11 #Using version 6 of FSL creates problems
 
 #load version 3 of Python (since the default is version 2, which doesn't work w/MRIQC)
 #source /gpfs/group/mnh5174/default/lab_resources/lab_python3/bin/activate

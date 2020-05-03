@@ -23,17 +23,23 @@ command -v module >/dev/null 2>&1 && module unload python #make sure no system p
 
 [ -n "$torque_modules_root" ] && module use "$torque_modules_root"
 [ -n "$afni_module" ] && module load "$afni_module"
-[ -n "$fsl_module"] && module load "$fsl_module"
+[ -n "$fsl_module" ] && module load "$fsl_module"
 [ -n "$ants_module" ] && module load "$ants_module"
 [ -n "$freesurfer_module" ] && module load "$freesurfer_module"
+[ -n "$pandoc_module" ] && module load "$pandoc_module"
 
 #set freesurfer subjects dir to desired location
 source $FREESURFER_HOME/SetUpFreeSurfer.sh
 export SUBJECTS_DIR="$G/freesurfer_subjects"
 
-#source ${G}/lab_resources/ni_path.bash
+export PATH="$G/lab_resources/installers/ICA-AROMA/ICA_AROMA.py:$G/lab_resources/c3d-1.1.0-Linux-x86_64/bin:$G/lab_resources/bin:${PATH}" #bids-validator lives here
 
 #activate fmriprep python environment
 source "${fmriprep_virtualenv}/bin/activate"
+
+if [ $( command -v module >/dev/null 2>&1 ) -eq 0 ]; then
+    echo "Currently loaded modules in fmriprep_wrapper"
+    module list
+fi
 
 "${fmriprep_virtualenv}/bin/fmriprep" "$@" #pass all arguments forward

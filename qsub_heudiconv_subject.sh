@@ -19,6 +19,8 @@ source "${pipedir}/pipeline_functions"
 source "$env_file" #setup relevant variables for this processing environment
 
 [[ -n "${study_cfg}" && -r "${study_cfg}" ]] && source "${study_cfg}" #source a study config file if passed as environment variable
+[ -n "$torque_modules_root" ] && module use "$torque_modules_root"
+[ -n "$r_module" ] && module load "$r_module"
 
 ####
 #verify necessary arguments
@@ -26,7 +28,6 @@ source "$env_file" #setup relevant variables for this processing environment
 [ -z "${heudiconv_heuristic}" ] && echo "No heudiconv_heuristic variable set." && exit 1
 [ -z "${loc_mrraw_root}" ] && echo "No loc_mrraw_root variable set." && exit 1
 [ -z "${loc_bids_root}" ] && echo "No loc_bids_root variable set." && exit 1
-
 
 #source /gpfs/group/mnh5174/default/lab_resources/ni_path.bash
 
