@@ -13,9 +13,9 @@ Optionally, you can pass a second configuration file that specifies all of the d
 If not provided, the script uses environment.cfg in this directory.
 
 Example:
-  preprocess_study.sh neuromap.cfg
+  preprocess_study.sh study_cfg/neuromap.cfg
 
-  preprocess_study.sh neuromap.cfg alternate_compute_environment.cfg
+  preprocess_study.sh study_cfg/neuromap.cfg alternate_compute_environment.cfg
 
 -----------------------------------
 EndOfHelp
@@ -99,7 +99,7 @@ for sdir in $subdirs; do
 
     #Run MRIQC, if not already run
     if [[ ${run_mriqc} -eq 1 && ! -d "${loc_root}/mriqc_IQMs/sub-${sub}" ]]; then
-	rel "qsub $depend_string $( build_qsub_string walltime=$mriqc_walltime ) \
+	rel "qsub $depend_string $( build_qsub_string nodes=1:ppn=$mriqc_nthreads walltime=$mriqc_walltime ) \
 	    -v $( envpass debug_pipeline sub loc_root log_file pipedir ) \
 	    ${pipedir}/qsub_mriqc_subject.sh" $rel_suffix
     fi
