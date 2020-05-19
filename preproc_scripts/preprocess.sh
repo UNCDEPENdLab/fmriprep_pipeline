@@ -16,7 +16,14 @@ for sub in $(seq -f "%03g" 2000); do
 			heudiconv=$(qsub -v sub=$sub,loc_root=$loc_root,loc_mrraw_root=$loc_mrraw_root heudiconv.sh)
 			qsub -W depend=afterok:$heudiconv -v sub=$sub,loc_root=$loc_root mriqc.sh
 			qsub -W depend=afterok:$heudiconv -v sub=$sub,loc_root=$loc_root,loc_mrproc_root=$loc_mrproc_root fmriprep.sh	
-			qsub -W depend=afterok:$heudiconv -v sub=$sub,output_dir=${loc_root}/fidelity_checks,repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs
+
+			# stagger dependencies to avoid race conditions
+			if [ -z "$fidelityjid" ]; then # first fidelity job
+				fidelityjid=$(qsub -W depend=afterok:$heudiconv -v sub=$sub,output_dir=${loc_root}/fidelity_checks,repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
+			else # another fidelity job was queued first: wait for that one to finish
+				fidelityjid=$(qsub -W depend=after:$fidelityjid,afterok:$heudiconv -v sub=$sub,output_dir=${loc_root}/fidelity_checks,repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
+			fi
+			fidelityjid=$(qsub -W depend=afterok:$fidelityjid -v sub=$sub,fidelity_dir=${loc_root}/fidelity_checks,repo_loc=$PWD mri_fidelity_checks/run_fidelity_viewer.pbs)
 		else
 			#Run MRIQC, if not already run
 			if [ ! -d "${loc_root}/mriqc_IQMs/sub-${sub}" ];then
@@ -26,8 +33,15 @@ for sub in $(seq -f "%03g" 2000); do
 			if [ ! -d "${loc_mrproc_root}/fmriprep/sub-${sub}" ]; then
 				qsub -v sub=$sub,loc_root=$loc_root,loc_mrproc_root=$loc_mrproc_root fmriprep.sh	
 			fi
-			#Run fidelity cheks case not already run
-			qsub -v sub=$sub,output_dir=${loc_root}/fidelity_checks,repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs
+
+			#Run fidelity checks case not already run
+			# stagger dependencies to avoid race conditions
+			if [ -z "$fidelityjid" ]; then # first fidelity job
+				fidelityjid=$(qsub -v sub=$sub,output_dir=${loc_root}/fidelity_checks,repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
+			else # another fidelity job was queued first: wait for that one to finish
+				fidelityjid=$(qsub -W depend=after:$fidelityjid -v sub=$sub,output_dir=${loc_root}/fidelity_checks,repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
+			fi
+			fidelityjid=$(qsub -W depend=afterok:$fidelityjid -v sub=$sub,fidelity_dir=${loc_root}/fidelity_checks,repo_loc=$PWD mri_fidelity_checks/run_fidelity_viewer.pbs)
 		fi
 	fi
 done

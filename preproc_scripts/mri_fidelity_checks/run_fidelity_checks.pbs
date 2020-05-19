@@ -5,6 +5,7 @@
 #PBS -A mnh5174_c_g_sc_default
 #PBS -M dpp5430@psu.edu
 #PBS -j oe
+#PBS -N fidelity_checks
 
 # This file encapsulates the fidelity checking process
 # This file expects a range of numbers to be passed to it as arguments, specifying which subjects to run the fidelity checks on
