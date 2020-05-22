@@ -2,7 +2,7 @@
 
 #PBS -l nodes=1:ppn=1
 #PBS -l walltime=00:05:00
-#PBS -A mnh5174_c_g_sc_default
+#PBS -A open
 #PBS -j oe
 #PBS -N fidelity_viewer
 

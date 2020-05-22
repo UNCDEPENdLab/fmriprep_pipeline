@@ -2,7 +2,7 @@
 
 #PBS -l nodes=1:ppn=1
 #PBS -l walltime=2:00:00
-#PBS -A mnh5174_c_g_sc_default
+#PBS -A open
 #PBS -M dpp5430@psu.edu
 #PBS -j oe
 #PBS -N heudiconv
