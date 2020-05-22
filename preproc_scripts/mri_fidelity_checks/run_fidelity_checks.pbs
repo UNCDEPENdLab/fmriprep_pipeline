@@ -2,7 +2,7 @@
 
 #PBS -l nodes=1:ppn=1
 #PBS -l walltime=00:05:00
-#PBS -A mnh5174_c_g_sc_default
+#PBS -A open
 #PBS -M dpp5430@psu.edu
 #PBS -j oe
 #PBS -N fidelity_checks
@@ -29,4 +29,4 @@ subject_data_dir="/gpfs/group/mnh5174/default/NeuroMAP/bids"
 # run the fidelity checks
 
 #python ${repo_loc}/${code_dir}/test.py ${repo_loc}/$template_file $subject_data_dir $output_dir "$sub"
-python ${repo_loc}/mri_fidelity_checks/${code_dir}/feeder.py ${repo_loc}/mri_fidelity_checks/$template_file $subject_data_dir $output_dir "$sub"
+python ${repo_loc}/mri_fidelity_checks/${code_dir}/feeder.py ${repo_loc}/mri_fidelity_checks/$template_file $subject_data_dir $output_dir "$sub" && date > ${repo_loc}/bids/sub-$sub/fidelity.complete

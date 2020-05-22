@@ -4,15 +4,20 @@
 
 #Set environment variables
 source /gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/cfg_files/neuromap_transfer.cfg
+source_root=/gpfs/group/mnh5174/default/NeuroMAP
+loc_root=/storage/home/axm6053 #local root directory for project
+loc_mrraw_root=${source_root}/MR_Raw #local dicom sync directory
+loc_mrproc_root=${loc_root}/MR_Proc #local directory for processed data. NB: If not defined, processed data will be placed inside subject directories in loc_mrraw_root
 
 #Pull raw MRI data from SLEIC
-source /gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/syncMRCTR_MRRaw
+#source /gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/syncMRCTR_MRRaw
 
 for sub in $(seq -f "%03g" 2000); do 
 	#For each subject with raw data...
 	if [ -d "${loc_mrraw_root}/$sub" ]; then
+		echo $sub
 		#If they don't yet have BIDS data, run them through the full pipeline		
-		if [ ! -d "${loc_root}/bids/sub-${sub}" ];then
+		if [ ! -d "${source_root}/bids/sub-${sub}" ];then
 			heudiconv=$(qsub -v sub=$sub,loc_root=$loc_root,loc_mrraw_root=$loc_mrraw_root,repo_loc=$PWD heudiconv.sh)
 			qsub -W depend=afterok:$heudiconv -v sub=$sub,loc_root=$loc_root mriqc.sh
 			qsub -W depend=afterok:$heudiconv -v sub=$sub,loc_root=$loc_root,loc_mrproc_root=$loc_mrproc_root fmriprep.sh	
