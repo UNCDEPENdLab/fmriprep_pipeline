@@ -10,7 +10,7 @@
 
 source /gpfs/group/mnh5174/default/lab_resources/ni_path.bash
 
-#heudiconv -d ${loc_mrraw_root}/{subject}/*/*.dcm -s $sub -f ${repo_loc}/nmap_heuristic.py -c dcm2niix -o ${bids_out}/bids -b
+#heudiconv -d ${loc_mrraw_root}/{subject}/*/*.dcm -s $sub -f ${repo_loc}/nmap_heuristic.py -c dcm2niix -o ${loc_root}/bids -b
 /gpfs/group/mnh5174/default/lab_resources/lab_python3/bin/heudiconv -d ${loc_mrraw_root}/{subject}/*/*.dcm -s $sub -f ${repo_loc}/nmap_heuristic.py -c dcm2niix -o ${loc_root}/bids -b
 
 

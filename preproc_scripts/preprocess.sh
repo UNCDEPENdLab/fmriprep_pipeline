@@ -13,7 +13,7 @@ for sub in $(seq -f "%03g" 2000); do
 	if [ -d "${loc_mrraw_root}/$sub" ]; then
 		#If they don't yet have BIDS data, run them through the full pipeline		
 		if [ ! -d "${loc_root}/bids/sub-${sub}" ];then
-			heudiconv=$(qsub -v sub=$sub,loc_root=$loc_root,loc_mrraw_root=$loc_mrraw_root heudiconv.sh)
+			heudiconv=$(qsub -v sub=$sub,loc_root=$loc_root,loc_mrraw_root=$loc_mrraw_root,repo_loc=$PWD heudiconv.sh)
 			qsub -W depend=afterok:$heudiconv -v sub=$sub,loc_root=$loc_root mriqc.sh
 			qsub -W depend=afterok:$heudiconv -v sub=$sub,loc_root=$loc_root,loc_mrproc_root=$loc_mrproc_root fmriprep.sh	
 
