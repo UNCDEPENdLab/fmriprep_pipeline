@@ -13,4 +13,4 @@ module load fsl/6.0.1
 code_dir="code"
 
 # run the script to output the results of the fidelity checks in a human-readable manner
-python ${repo_loc}/mri_fidelity_checks/${code_dir}/substatus.py $fidelity_dir "$sub"
+python ${repo_loc}/mri_fidelity_checks/${code_dir}/substatus.py ${loc_root}/fidelity_output_data "$sub" && date "+%m %d %y @ %H:%M" > ${loc_root}/bids/sub-${sub}/.fidelity.complete

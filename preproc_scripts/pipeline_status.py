@@ -22,6 +22,17 @@ class modality_t(Enum):
 	FMRIPREP = auto()
 	FIDELITY = auto()
 
+	def __str__(self):
+
+		if self == modality_t.MRIQC:
+			return "MRIQC Checks"
+		elif self == modality_t.HEUDICONV:
+			return "BIDS Data"
+		elif self == modality_t.FMRIPREP:
+			return "FRMIPREP Processed"
+		elif self == modality_t.FIDELITY:
+			return "Fidelity Checks"
+
 # organizes and maintains information about which processes ran to completion for a specific subject
 class subject:
 
@@ -33,6 +44,7 @@ class subject:
 		#self.modal_status = {modality_t.MRIQC: None, modality_t.HEUDICONV: None, modality_t.FMRIPREP: None, modality_t.FIDELITY: None}
 		# generate dict
 		self.modal_status = {i: None for i in mapping}
+		self.complete = True
 
 	def changeStatus(self, mode, newVal):
 		self.modal_status[mode] = newVal
@@ -63,11 +75,15 @@ class subject:
 
 	def checkFiles(self, modeMapping):
 		# check that each expected file exists
+		self.complete = True
 		for mode in modeMapping:
 			expectedFile = ensureTrailingSlash(modeMapping[mode]["location"]) + ("sub-%03d/" % self.idNum) + modeMapping[mode]["name"]
 			if os.path.exists(expectedFile):
 				info = open(expectedFile, "r").read()
+				info = "".join(i for i in info if i != "\n")
 				self.changeStatus(mode, info)
+			else:
+				self.complete = False
 
 def ensureTrailingSlash(string):
 	if string[-1] != "/":
@@ -84,7 +100,7 @@ def driver():
 		modality_t.MRIQC: {"location": "mriqc_IQMs", "name": ".complete"},
 		modality_t.HEUDICONV: {"location": "bids", "name": ".heudiconv.complete"},
 		modality_t.FMRIPREP: {"location": "MR_Proc/fmriprep", "name": ".complete"},
-		modality_t.FIDELITY: {"location": "bids", "name": ".complete"} 
+		modality_t.FIDELITY: {"location": "bids", "name": ".fidelity.complete"} 
 	}
 
 	#modeMapping = {
@@ -108,9 +124,17 @@ def driver():
 	for sub in subjects:
 		sub.checkFiles(modeMapping)
 
+	# find which subjects are incomplete
+	incompleteSubs = ["%03d" % i.idNum for i in subjects if not i.complete]
+
 	# generate report
 	text = subjects[0].genHeader() + "\n"
 	text += "\n".join(str(sub) for sub in sorted(subjects, key=lambda x: x.idNum))
+
+	if len(incompleteSubs) > 0:
+		text += "\n" + "Incomplete Subjects: %s" % ", ".join(incompleteSubs)
+	else:
+		text += "\n" + "All subjects are complete"
 
 	print(text)
 

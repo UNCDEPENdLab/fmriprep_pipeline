@@ -12,10 +12,13 @@ loc_mrproc_root=${loc_root}/MR_Proc #local directory for processed data. NB: If 
 #Pull raw MRI data from SLEIC
 #source /gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/syncMRCTR_MRRaw
 
-for sub in $(seq -f "%03g" 2000); do 
+echo > subs.log
+allJobIds=""
+for sub in $(seq -f "%03g" 5); do 
 	#For each subject with raw data...
 	if [ -d "${loc_mrraw_root}/$sub" ]; then
 		echo $sub
+		echo $sub >> subs.log # build expectations
 		#If they don't yet have BIDS data, run them through the full pipeline		
 		if [ ! -d "${loc_root}/bids/sub-${sub}" ];then
 			echo -e "\tsubject doesnt have bids: running full pipeline"
@@ -29,7 +32,8 @@ for sub in $(seq -f "%03g" 2000); do
 			else # another fidelity job was queued first: wait for that one to finish
 				fidelityjid=$(qsub -W depend=after:$fidelityjid,afterok:$heudiconv -v sub=$sub,loc_root=${loc_root},repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
 			fi
-			qsub -W depend=afterok:$fidelityjid -v sub=$sub,fidelity_dir=${loc_root}/fidelity_output_data,repo_loc=$PWD mri_fidelity_checks/run_fidelity_viewer.pbs
+
+			allJobIds=${allJobIds},after:${heudiconv},after:${fidelityjid}
 		else
 			echo -e "\tsubject has bids: running partially"
 			#Run MRIQC, if not already run
@@ -50,10 +54,15 @@ for sub in $(seq -f "%03g" 2000); do
 			else # another fidelity job was queued first: wait for that one to finish
 				fidelityjid=$(qsub -W depend=after:$fidelityjid -v sub=$sub,loc_root=${loc_root},repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
 			fi
-			qsub -W depend=afterok:$fidelityjid -v sub=$sub,fidelity_dir=${loc_root}/fidelity_output_data,repo_loc=$PWD mri_fidelity_checks/run_fidelity_viewer.pbs
+
+			allJobIds=${allJobIds},after:${fidelityjid}
 		fi
 	fi
 done
+
+allJobIds=$(echo $allJobIds | sed 's/\.torque01\.[a-z\.]*edu//g' | sed 's/^,*//')
+echo $allJobIds
+qsub -W depend=$allJobIds -d $PWD -v loc_root=${loc_root},TOEMAIL="axm6053@psu.edu" report.sh
 
 #source /gpfs/group/mnh5174/default/Daniel/OLD_preproc_NeuroMAP/SANDBOX_neuromap_transfer.cfg
 #source /gpfs/group/mnh5174/default/Daniel/OLD_preproc_NeuroMAP/SANDBOX_syncMRCTR_MRRaw

@@ -332,7 +332,7 @@ def checkFiles(templatePath, dataDir, subIDs):
 	
 	if len(files) == 0:
 		print("feeder.py: WARNING: No matching files were found. Aborting...")
-		exit(-1)
+		sys.exit(-1)
 
 
 	# sort files by their corresponding scan
