@@ -4,7 +4,8 @@
 #PBS -l walltime=00:05:00
 #PBS -A open
 #PBS -M dpp5430@psu.edu
-#PBS -j oe
+#PBS -j o aci_output
+#PBS -j e aci_output
 #PBS -N fidelity_checks
 
 # This file encapsulates the fidelity checking process
@@ -29,4 +30,4 @@ subject_data_dir="$loc_root/bids"
 # run the fidelity checks
 
 #python ${repo_loc}/${code_dir}/test.py ${repo_loc}/$template_file $subject_data_dir $loc_root "$sub"
-python ${repo_loc}/mri_fidelity_checks/${code_dir}/feeder.py ${repo_loc}/mri_fidelity_checks/$template_file $subject_data_dir $loc_root "$sub" && python ${repo_loc}/mri_fidelity_checks/${code_dir}/substatus.py ${loc_root}/fidelity_output_data "$sub" && date "+%m %d %y @ %H:%M" > ${loc_root}/bids/sub-${sub}/.fidelity.complete
+python ${repo_loc}/mri_fidelity_checks/${code_dir}/feeder.py ${repo_loc}/mri_fidelity_checks/$template_file $subject_data_dir $loc_root "$sub" && python ${repo_loc}/mri_fidelity_checks/${code_dir}/substatus.py ${loc_root}/fidelity_output_data "$sub" && date "+%m%d%y@%H:%M" > ${loc_root}/bids/sub-${sub}/.fidelity.complete

@@ -331,7 +331,7 @@ def checkFiles(templatePath, dataDir, subIDs):
 			files.append(f)
 	
 	if len(files) == 0:
-		print("feeder.py: WARNING: No matching files were found. Aborting...")
+		print("feeder.py: WARNING: No matching files were found. Aborting...", file=sys.stderr)
 		sys.exit(-1)
 
 

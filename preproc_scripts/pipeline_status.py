@@ -96,6 +96,7 @@ def driver():
 	expectationFilepath = sys.argv[1]
 	baseLoc = sys.argv[2]
 
+	# TODO: convert to YAML encoding
 	modeMapping = { 
 		modality_t.MRIQC: {"location": "mriqc_IQMs", "name": ".complete"},
 		modality_t.HEUDICONV: {"location": "bids", "name": ".heudiconv.complete"},
@@ -103,18 +104,14 @@ def driver():
 		modality_t.FIDELITY: {"location": "bids", "name": ".fidelity.complete"} 
 	}
 
-	#modeMapping = {
-	#	"Type 1": {"location": "thing1", "name": "complete"},
-	#	"Type 2": {"location": "thing2", "name": "all_done"}
-	#}
-
 	# parse expectationFilename to get list of subject numbers
 	fd = open(expectationFilepath, "r")
 	subjects = [subject(i, modeMapping) for i in fd.read().split("\n") if i != ""]
 	fd.close()
 
 	if len(subjects) <= 0:
-		print("%s: ABORTING: No subjects were identified" % sys.argv[0])
+		print("%s: ABORTING: No subjects were identified" % sys.argv[0], file=sys.stderr)
+		sys.exit(-1)
 
 	# calculate locations
 	for mode in modeMapping:
