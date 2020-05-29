@@ -3,9 +3,8 @@
 #PBS -l nodes=1:ppn=1
 #PBS -l walltime=00:05:00
 #PBS -A open
-#PBS -M dpp5430@psu.edu
-#PBS -j o aci_output
-#PBS -j e aci_output
+#PBS -o aci_output
+#PBS -e aci_output
 #PBS -N fidelity_checks
 
 # This file encapsulates the fidelity checking process

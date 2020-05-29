@@ -12,13 +12,16 @@ loc_mrproc_root=${loc_root}/MR_Proc #local directory for processed data. NB: If 
 #Pull raw MRI data from SLEIC
 #source /gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/syncMRCTR_MRRaw
 
-echo > subs.log
+expectationFile=".subs_jobs.log"
+# the directory where qsub output files go. this needs to match the "-o" and "-e" in every pbs script
+outputDir="aci_output"
+
+echo > $expectationFile
 allJobIds=""
-for sub in $(seq -f "%03g" 5); do 
+for sub in $(seq -f "%03g" 8); do 
 	#For each subject with raw data...
 	if [ -d "${loc_mrraw_root}/$sub" ]; then
 		echo $sub
-		echo $sub >> subs.log # build expectations
 		#If they don't yet have BIDS data, run them through the full pipeline		
 		if [ ! -d "${loc_root}/bids/sub-${sub}" ];then
 			echo -e "\tsubject doesnt have bids: running full pipeline"
@@ -34,6 +37,7 @@ for sub in $(seq -f "%03g" 5); do
 			fi
 
 			allJobIds=${allJobIds},after:${heudiconv},after:${fidelityjid}
+			currentIds=${heudiconv},${fidelityjid}
 		else
 			echo -e "\tsubject has bids: running partially"
 			#Run MRIQC, if not already run
@@ -56,13 +60,18 @@ for sub in $(seq -f "%03g" 5); do
 			fi
 
 			allJobIds=${allJobIds},after:${fidelityjid}
+			currentIds=${fidelityjid}
 		fi
+
+		# build expectations so status scripts have enough information
+		currentIds=$(echo $currentIds | sed 's/\.torque01\.[a-z\.]*edu//g')
+		echo -e "$sub\t$currentIds" >> $expectationFile
 	fi
 done
 
 allJobIds=$(echo $allJobIds | sed 's/\.torque01\.[a-z\.]*edu//g' | sed 's/^,*//')
 echo $allJobIds
-qsub -W depend=$allJobIds -d $PWD -v loc_root=${loc_root},TOEMAIL="axm6053@psu.edu" report.sh
+qsub -W depend=$allJobIds -d $PWD -v outputDir=$outputDir,expectationFile=$expectationFile,loc_root=${loc_root},TOEMAIL="axm6053@psu.edu" report.sh
 
 #source /gpfs/group/mnh5174/default/Daniel/OLD_preproc_NeuroMAP/SANDBOX_neuromap_transfer.cfg
 #source /gpfs/group/mnh5174/default/Daniel/OLD_preproc_NeuroMAP/SANDBOX_syncMRCTR_MRRaw

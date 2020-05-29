@@ -15,6 +15,8 @@
 from enum import Enum, auto
 import sys
 import os
+import pipeline_status_helper as helper
+import compile_output
 
 class modality_t(Enum):
 	MRIQC = auto()
@@ -77,7 +79,7 @@ class subject:
 		# check that each expected file exists
 		self.complete = True
 		for mode in modeMapping:
-			expectedFile = ensureTrailingSlash(modeMapping[mode]["location"]) + ("sub-%03d/" % self.idNum) + modeMapping[mode]["name"]
+			expectedFile = helper.ensureTrailingSlash(modeMapping[mode]["location"]) + ("sub-%03d/" % self.idNum) + modeMapping[mode]["name"]
 			if os.path.exists(expectedFile):
 				info = open(expectedFile, "r").read()
 				info = "".join(i for i in info if i != "\n")
@@ -85,16 +87,10 @@ class subject:
 			else:
 				self.complete = False
 
-def ensureTrailingSlash(string):
-	if string[-1] != "/":
-		return string + "/"
-	else:
-		return string
-
-def driver():
+def driver(expectationFilepath, baseLoc):
 	# parse cmd line
-	expectationFilepath = sys.argv[1]
-	baseLoc = sys.argv[2]
+	#expectationFilepath = sys.argv[1]
+	#baseLoc = sys.argv[2]
 
 	# TODO: convert to YAML encoding
 	modeMapping = { 
@@ -106,7 +102,7 @@ def driver():
 
 	# parse expectationFilename to get list of subject numbers
 	fd = open(expectationFilepath, "r")
-	subjects = [subject(i, modeMapping) for i in fd.read().split("\n") if i != ""]
+	subjects = [subject(i.split("\t")[0], modeMapping) for i in fd.read().split("\n") if i != ""]
 	fd.close()
 
 	if len(subjects) <= 0:
@@ -115,7 +111,7 @@ def driver():
 
 	# calculate locations
 	for mode in modeMapping:
-		modeMapping[mode]["location"] = ensureTrailingSlash(baseLoc) + modeMapping[mode]["location"]
+		modeMapping[mode]["location"] = helper.ensureTrailingSlash(baseLoc) + modeMapping[mode]["location"]
 
 	# check each subject has files
 	for sub in subjects:
@@ -133,7 +129,20 @@ def driver():
 	else:
 		text += "\n" + "All subjects are complete"
 
-	print(text)
+	return text
 
-driver()
+def getPipelineStatus():
+	expectationFilepath = sys.argv[1]
+	baseLoc = sys.argv[2]
+	outputFileDir = sys.argv[3]
+
+	report = ""
+	report += driver(expectationFilepath, baseLoc)
+	report += "\n\n"
+	reports = compile_output.driver(expectationFilepath, outputFileDir)
+	for i in reports:
+		report += i + "\n"
+
+	return report
 	
+print(getPipelineStatus())
