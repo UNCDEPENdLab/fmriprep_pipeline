@@ -1,4 +1,4 @@
-# this script reads the output of the qsub jobs, finds those that threw an error, and compiles them into a concise report that can be emailed
+# This script internalizes the output of aci jobs, allowing for easy selection and manipulation of their contents. Currently, it is used to generate an error report and a fidelity checks report.
 # things to get:
 #	traceback --> make my own scripts put error messages on stderr!
 #		read the .e file
@@ -59,10 +59,6 @@ class jobOutput:
 		self.script = info[0].group("script")
 		self.jobId = int(info[0].group("jobId"))
 		self.filetype = info[1]
-
-		# check assumptions
-		if self.jobId == None:
-			print("ERROR: jobId is none!")
 
 		# lookup subId with jobId: where to get this information? parse files beforehand and pass mapping in
 		try:
@@ -138,6 +134,8 @@ def driver(expectationFile, outputFileDir):
 
 	# construct jobOutput objects, one for each file
 	joboutputs = [ jobOutput(path, jobsToSub) for path in outputFilePaths ]
+	joboutputs = [ i for i in joboutputs if i.script != None ]
+	joboutputs = sorted(joboutputs, key=lambda x: x.subId)
 	
 	# compile error report
 	errorReport = compileReport([j for j in joboutputs if j.jobDidError()], "######## ERROR REPORT ########\n\n")

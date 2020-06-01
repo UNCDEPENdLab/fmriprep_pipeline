@@ -42,9 +42,7 @@ class subject:
 	
 	def __init__(self, idNum, mapping):
 		self.idNum = int(idNum)
-		# tracks which are complete: None means error or incomplete. if successful, replaced with date of completion
-		#self.modal_status = {modality_t.MRIQC: None, modality_t.HEUDICONV: None, modality_t.FMRIPREP: None, modality_t.FIDELITY: None}
-		# generate dict
+		# generate dict: tracks which are complete: None means error or incomplete. if successful, replaced with date of completion
 		self.modal_status = {i: None for i in mapping}
 		self.complete = True
 
@@ -88,9 +86,6 @@ class subject:
 				self.complete = False
 
 def driver(expectationFilepath, baseLoc):
-	# parse cmd line
-	#expectationFilepath = sys.argv[1]
-	#baseLoc = sys.argv[2]
 
 	# TODO: convert to YAML encoding
 	modeMapping = { 
@@ -117,12 +112,14 @@ def driver(expectationFilepath, baseLoc):
 	for sub in subjects:
 		sub.checkFiles(modeMapping)
 
+	subjects = sorted(subjects, key=lambda x: x.idNum)
+
 	# find which subjects are incomplete
 	incompleteSubs = ["%03d" % i.idNum for i in subjects if not i.complete]
 
 	# generate report
 	text = subjects[0].genHeader() + "\n"
-	text += "\n".join(str(sub) for sub in sorted(subjects, key=lambda x: x.idNum))
+	text += "\n".join(str(sub) for sub in subjects)
 
 	if len(incompleteSubs) > 0:
 		text += "\n" + "Incomplete Subjects: %s" % ", ".join(incompleteSubs)
@@ -139,8 +136,7 @@ def getPipelineStatus():
 	report = ""
 	report += driver(expectationFilepath, baseLoc)
 	report += "\n\n"
-	reports = compile_output.driver(expectationFilepath, outputFileDir)
-	for i in reports:
+	for i in compile_output.driver(expectationFilepath, outputFileDir):
 		report += i + "\n"
 
 	return report
