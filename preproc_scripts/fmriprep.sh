@@ -5,6 +5,7 @@
 #PBS -o aci_output
 #PBS -e aci_output
 #PBS -A open
+#PBS -N fmriprep
 
 
 #--use-plugin /gpfs/group/mnh5174/default/Daniel/s4_mri/preproc_scripts

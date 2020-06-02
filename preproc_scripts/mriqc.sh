@@ -5,6 +5,7 @@
 #PBS -A open
 #PBS -o aci_output
 #PBS -e aci_output
+#PBS -N mriqc
 
 #load in lab programs, including MRIQC
 #I would tend to avoid this since it creates a bit of a blackbox and may setup things you don't want.
