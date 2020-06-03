@@ -19,12 +19,13 @@ outputDir="aci_output" # the directory where qsub output files go. this needs to
 
 echo > $expectationFile
 allJobIds=""
+dependCom="afterany"
 for sub in $(seq -f "%03g" 8); do 
 	#For each subject with raw data...
 	if [ -d "${loc_mrraw_root}/$sub" ]; then
 		echo $sub
 		#If they don't yet have BIDS data, run them through the full pipeline		
-		if [ ! -d "${loc_root}/bids/sub-${sub}" ];then
+		if [ ! -e "${loc_root}/bids/sub-${sub}/.heudiconv.complete" ];then
 			echo -e "\tsubject doesnt have bids: running full pipeline"
 			# qsub returns the name of the job scheduled: [0-9]*.torque01.[a-z.]*.edu
 			heudiconv=$(qsub -v sub=$sub,loc_root=$loc_root,loc_mrraw_root=$loc_mrraw_root,repo_loc=$PWD heudiconv.sh)
@@ -35,35 +36,44 @@ for sub in $(seq -f "%03g" 8); do
 			if [ -z "$fidelityjid" ]; then # first fidelity job
 				fidelityjid=$(qsub -W depend=afterok:$heudiconv -v sub=$sub,loc_root=${loc_root},repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
 			else # another fidelity job was queued first: wait for that one to finish
-				fidelityjid=$(qsub -W depend=after:$fidelityjid,afterok:$heudiconv -v sub=$sub,loc_root=${loc_root},repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
+				fidelityjid=$(qsub -W depend=afterany:$fidelityjid,afterok:$heudiconv -v sub=$sub,loc_root=${loc_root},repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
 			fi
 
-			allJobIds=${allJobIds},after:${heudiconv},after:${fidelityjid},after:${mriqc},after:${fmriprep} # construct dependency argument
+			allJobIds=${allJobIds},${dependCom}:${heudiconv},${dependCom}:${fidelityjid},${dependCom}:${mriqc},${dependCom}:${fmriprep} # construct dependency argument
 			currentIds=${heudiconv},${fidelityjid},${mriqc},${fmriprep} # construct list of job ids associated with the current subject
 		else
 			echo -e "\tsubject has bids: running partially"
+			fmriprep=""
+			mriqc=""
 			#Run MRIQC, if not already run
-			if [ ! -d "${loc_root}/mriqc_IQMs/sub-${sub}" ]; then
-				mriqc=,after:$(qsub -v sub=$sub,loc_root=$loc_root mriqc.sh)
-				echo -e "\twould have run mriqc"
+			if [ ! -e "${loc_root}/mriqc_IQMs/sub-${sub}/.complete" ]; then
+				mriqc=,${dependCom}:$(qsub -v sub=$sub,loc_root=$loc_root mriqc.sh)
+				echo -e "\tRunning mriqc"
 			fi
+
 			#Run fmriprep, if not already run
-			if [ ! -d "${loc_mrproc_root}/fmriprep/sub-${sub}" ]; then
-				fmriprep=,after:$(qsub -v sub=$sub,loc_root=$loc_root,loc_mrproc_root=$loc_mrproc_root fmriprep.sh)
-				echo -e "\twould have run fmriprep"
+			if [ ! -e "${loc_mrproc_root}/fmriprep/sub-${sub}/.complete" ]; then
+				fmriprep=,${dependCom}:$(qsub -v sub=$sub,loc_root=$loc_root,loc_mrproc_root=$loc_mrproc_root fmriprep.sh)
+				echo -e "\tRunning fmriprep"
 			fi
 
 			#Run fidelity checks case not already run
-			# stagger dependencies to avoid race conditions
-			if [ -z "$fidelityjid" ]; then # first fidelity job
-				fidelityjid=$(qsub -v sub=$sub,loc_root=${loc_root},repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
-			else # another fidelity job was queued first: wait for that one to finish
-				fidelityjid=$(qsub -W depend=after:$fidelityjid -v sub=$sub,loc_root=${loc_root},repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
+			if [ ! -e "${loc_root}/bids/sub-${sub}/.fidelity.complete" ]; then
+				echo -e "\tRunning fidelity checks"
+				# stagger dependencies to avoid race conditions
+				if [ -z "$fidelityjid" ]; then # first fidelity job
+					fidelityjid=,${dependCom}:$(qsub -v sub=$sub,loc_root=${loc_root},repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
+				else # another fidelity job was queued first: wait for that one to finish
+					fidelityjid=,${dependCom}:$(qsub -W depend=afterany:$fidelityjid -v sub=$sub,loc_root=${loc_root},repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
+				fi
+				# only add on fidelityjid if it was changed to avoid duplicates
+				allJobIds=${allJobIds}${fidelityjid}
+				currentIds=${fidelityjid}
 			fi
 
-			allJobIds=${allJobIds},after:${fidelityjid}${mriqc}${fmriprep}
-			currentIds=${fidelityjid}${mriqc}${fmriprep}
-			currentIds=$(echo $currentIds | sed 's/,after:/,/g') # remove the "after" dependency specification
+			allJobIds=${allJobIds}${mriqc}${fmriprep}
+			currentIds=${currentIds}${mriqc}${fmriprep}
+			currentIds=$(echo $currentIds | sed 's/,afterany:/,/g' | sed 's/^,*//') # remove the "after" dependency specification
 		fi
 
 		# build expectations so status scripts have enough information
@@ -73,7 +83,11 @@ for sub in $(seq -f "%03g" 8); do
 done
 
 allJobIds=$(echo $allJobIds | sed 's/\.torque01\.[a-z0-9\.]*edu//g' | sed 's/^,*//') # isolate the job id number, while preserving the "after" dependency specification
-qsub -W depend=$allJobIds -d $PWD -v outputDir=$outputDir,expectationFile=$expectationFile,loc_root=${loc_root},TOEMAIL="$emailRecipients" report.sh
+if [ ! -z $allJobIds ]; then
+	qsub -W depend=$allJobIds -d $PWD -v outputDir=$outputDir,expectationFile=$expectationFile,loc_root=${loc_root},TOEMAIL="$emailRecipients" report.sh
+else
+	echo "All subjects that have raw DICOM data have been fully processed: not submitting any jobs to qsub"
+fi
 
 #source /gpfs/group/mnh5174/default/Daniel/OLD_preproc_NeuroMAP/SANDBOX_neuromap_transfer.cfg
 #source /gpfs/group/mnh5174/default/Daniel/OLD_preproc_NeuroMAP/SANDBOX_syncMRCTR_MRRaw

@@ -1,15 +1,4 @@
 # This script internalizes the output of aci jobs, allowing for easy selection and manipulation of their contents. Currently, it is used to generate an error report and a fidelity checks report.
-# things to get:
-#	traceback --> make my own scripts put error messages on stderr!
-#		read the .e file
-#	subject number
-#		either have every job write its sub number to its stdout or write the job numbers when writing expected subjects in preprocess.sh
-#	script that was running
-#		in the name of the output file
-#	job id
-#		in the name of the output file
-#	time of error
-# error class that HAS a subject, job number etc... so that output can be framed in different ways
 
 # needs: location to look for output files, location to write report
 # process: for each file, parse into error object, keep track of error objects, write report
@@ -124,7 +113,6 @@ def compileReport(jobs, header):
 		text += str(job) + "\n"
 	return text
 
-# TODO: how to handle heudiconv stderr when it doesnt really seem to be a problem?
 def driver(expectationFile, outputFileDir):
 	# get jobid to subject mapping
 	jobsToSub = parseJobsToSub(expectationFile)

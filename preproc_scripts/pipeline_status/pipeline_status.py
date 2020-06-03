@@ -1,16 +1,14 @@
-# this script will parse the output directories of a given list of subjects (built up from running the pipeline, which ones should be completed), looking for .complete files for each data modality. it thencompiles this information to produce a succinct report on the status of the pipeline.
+# this script will parse the NeuroMap output directories for a given list of subjects, looking for ".complete" files for each data modality. it then compiles this information to produce a succinct report on the status of the pipeline.
 
-# where to put .complete files?
-#	all in the BIDS dir? or in their respective data modalities?
-# might be better to put them in their respective modality's directory so that if one is poking around in the files, they can easily see if their current directory has been completed
+# Author: Austin Marcus (axm6053@psu.edu)
 
+# PROGRAM INPUT OUTPUT
 # INPUT:
-# 	a file with a list of subjects with raw data: means that these subjects are expected to have been fully processed by the pipeline
-#	a mapping of locations in which to look for which kind of complete files
-#	the base location of the output
+# 	1) a file with a list of subjects that have raw data: means that these subjects are expected to have been fully processed by the pipeline
+#	2) a mapping of locations in which to look for which kind of complete files.
+#	3) the base location of the output from NeuroMap
 # OUTPUT:
 #	a file with a succinct report on which data modalities for which subjects completed or not
-#		also include date completed
 
 from enum import Enum, auto
 import sys
@@ -18,6 +16,7 @@ import os
 import pipeline_status_helper as helper
 import compile_output
 
+# represents data modality
 class modality_t(Enum):
 	MRIQC = auto()
 	HEUDICONV = auto()
@@ -35,11 +34,14 @@ class modality_t(Enum):
 		elif self == modality_t.FIDELITY:
 			return "Fidelity Checks"
 
-# organizes and maintains information about which processes ran to completion for a specific subject
+# organizes and maintains information about which processes/modalities ran to completion for a specific subject
 class subject:
 
-	colspace = 20
+	colspace = 20 # format output spacing
 	
+	# INPUT:
+	#	idNum: the subject id number
+	#	mapping: a dictionary mapping data modality to location and names
 	def __init__(self, idNum, mapping):
 		self.idNum = int(idNum)
 		# generate dict: tracks which are complete: None means error or incomplete. if successful, replaced with date of completion
@@ -49,6 +51,7 @@ class subject:
 	def changeStatus(self, mode, newVal):
 		self.modal_status[mode] = newVal
 
+	# generates an output string specifying the status of a particular modality for this subject
 	def _getStatusString(self, mode):
 		status = self.modal_status[mode]
 		if status == None:
@@ -58,6 +61,7 @@ class subject:
 
 		return string.rjust(subject.colspace, " ")
 
+	# generate output string header
 	def genHeader(self):
 		text = "sub "
 		for mode in self.modal_status:
@@ -65,7 +69,7 @@ class subject:
 
 		return text
 
-	# output in tabulated manner
+	# generate output in tabulated manner
 	def __str__(self):
 		text = "%03d:" % self.idNum
 		for mode in self.modal_status:
@@ -73,8 +77,8 @@ class subject:
 
 		return text
 
+	# check that each expected file exists
 	def checkFiles(self, modeMapping):
-		# check that each expected file exists
 		self.complete = True
 		for mode in modeMapping:
 			expectedFile = helper.ensureTrailingSlash(modeMapping[mode]["location"]) + ("sub-%03d/" % self.idNum) + modeMapping[mode]["name"]
@@ -85,6 +89,10 @@ class subject:
 			else:
 				self.complete = False
 
+# uses classes defined above to handle and process information
+# INPUT:
+#	expectationFilepath: the path to a file mapping subject ids to ACI jobids that are processing that subject's data
+#	baseLoc: the NeuroMap output root directory
 def driver(expectationFilepath, baseLoc):
 
 	# TODO: convert to YAML encoding
@@ -104,11 +112,11 @@ def driver(expectationFilepath, baseLoc):
 		print("%s: ABORTING: No subjects were identified" % sys.argv[0], file=sys.stderr)
 		sys.exit(-1)
 
-	# calculate locations
+	# calculate locations of .complete files
 	for mode in modeMapping:
 		modeMapping[mode]["location"] = helper.ensureTrailingSlash(baseLoc) + modeMapping[mode]["location"]
 
-	# check each subject has files
+	# check each subject has .complete files
 	for sub in subjects:
 		sub.checkFiles(modeMapping)
 
@@ -128,6 +136,10 @@ def driver(expectationFilepath, baseLoc):
 
 	return text
 
+# compiles 3 reports together:
+#	1) the status of the entire pipeline
+#	2) stderr of processes run on the current call to preprocess.sh
+#	3) the fidelity checks run on the current call to preprocess.sh
 def getPipelineStatus():
 	expectationFilepath = sys.argv[1]
 	baseLoc = sys.argv[2]
