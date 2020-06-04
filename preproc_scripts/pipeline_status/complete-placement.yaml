@@ -1,0 +1,13 @@
+---
+MRIQC:
+    location: "bids"
+    name: ".mriqc.complete"
+HEUDICONV:
+    location: "bids"
+    name: ".heudiconv.complete"
+FMRIPREP:
+    location: "bids"
+    name: ".fmriprep.complete"
+FIDELITY:
+    location: "bids"
+    name: ".fidelity.complete"

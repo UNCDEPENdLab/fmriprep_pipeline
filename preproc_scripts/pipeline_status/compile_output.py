@@ -1,9 +1,14 @@
-# This script internalizes the output of aci jobs, allowing for easy selection and manipulation of their contents. Currently, it is used to generate an error report and a fidelity checks report.
+# This script internalizes the output of aci jobs, allowing for easy selection
+# and manipulation of their contents. Currently, it is used to generate an
+# error report and a fidelity checks report.
+# Author: Austin Marcus (axm6053@psu.edu)
 
-# needs: location to look for output files, location to write report
-# process: for each file, parse into error object, keep track of error objects, write report
-
-#NOTE: only output files that have their job ids listed in the expectationFile will be compiled
+# INPUT:
+#	file with subject to ACI jobid mapping
+#	directory that contains ACI job output files
+# OUTPUT:
+#	a report containing the stderr from the currently ran jobs
+#	a report containing the fidelity checks fromthe currently ran jobs
 
 import re
 import sys
@@ -22,6 +27,7 @@ def getFilenameFromPath(path):
 
 	return filename
 
+# organizes information about an ACI output file, and decides if it contains errors
 class jobOutput:
 
 	class outputType(Enum):
@@ -34,12 +40,15 @@ class jobOutput:
 			elif self == jobOutput.outputType.stderr:
 				return "stderr"
 	
+	# mapping output type to the expected filename
 	fileToRegex = {outputType.stderr: "^(?P<script>[a-z0-9_]*)\.e(?P<jobId>[0-9]*)$", outputType.stdout: "^(?P<script>[a-z0-9_]*)\.o(?P<jobId>[0-9]*)$"}
 
 	# filepath: a *.[eo]* aci output file
+	# jobIdToSubId: a dict mapping multiple jobids to a unique subid
 	def __init__(self, filepath, jobIdToSubId):
-		# get needed information
+
 		info = jobOutput.parseFilename(getFilenameFromPath(filepath))
+
 		if info == None:
 			print("%s: WARNING: %s did not match expected filename pattern" % (sys.argv[0], filepath), file=sys.stderr)
 			self._error_on_init()
@@ -84,6 +93,8 @@ class jobOutput:
 	def jobDidError(self):
 		return self.error
 
+# INPUT: a file containing a subject-jobid mapping
+# OUTPUT: a dict that captures this mapping
 def parseJobsToSub(filepath):
 	fileContent = open(filepath, "r").read()
 	jobsToSub = {}
@@ -99,11 +110,18 @@ def parseJobsToSub(filepath):
 	
 	return jobsToSub
 
+# INPUT: a directory
+# OUTPUT: all of the ACI output files under that directory
 def getOutputFiles(sourceDir):
 	raw = os.popen("find %s -type f -regex \"%s\"" % (sourceDir, ".*/[0-9a-z_]*\.[oe][0-9]*")).read()
 	paths = [ i for i in raw.split("\n") if i != ""]
 	return paths
 
+# INPUT:
+#	jobs: a list of jobOutput objects
+#	header: the string that should precede the report
+# OUTPUT:
+#	text: a string containing the report
 def compileReport(jobs, header):
 	if len(jobs) == 0:
 		return "%s\n<nothing to report>\n\n" % header
@@ -121,8 +139,9 @@ def driver(expectationFile, outputFileDir):
 	outputFilePaths = getOutputFiles(outputFileDir)
 
 	# construct jobOutput objects, one for each file
+	# NOTE: all output files found are passed, but only the ones associated with the current run are processed due to how jobOutput.__init__ works
 	joboutputs = [ jobOutput(path, jobsToSub) for path in outputFilePaths ]
-	joboutputs = [ i for i in joboutputs if i.script != None ]
+	joboutputs = [ i for i in joboutputs if i.script != None ] # filter out files which didnt process
 	joboutputs = sorted(joboutputs, key=lambda x: x.subId)
 	
 	# compile error report

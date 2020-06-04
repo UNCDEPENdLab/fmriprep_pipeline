@@ -1,5 +1,7 @@
-# this script will parse the NeuroMap output directories for a given list of subjects, looking for ".complete" files for each data modality. it then compiles this information to produce a succinct report on the status of the pipeline.
-
+# this script will parse the NeuroMap output directories for a given list of
+# subjects, looking for ".complete" files for each data modality. it then
+# compiles this information to produce a succinct report on the status of the
+# pipeline.
 # Author: Austin Marcus (axm6053@psu.edu)
 
 # PROGRAM INPUT OUTPUT
@@ -15,6 +17,7 @@ import sys
 import os
 import pipeline_status_helper as helper
 import compile_output
+import yaml
 
 # represents data modality
 class modality_t(Enum):
@@ -89,19 +92,29 @@ class subject:
 			else:
 				self.complete = False
 
+
+# loads a dict defined by yaml into memory
+# top-level keys must match the name of the types in the modality_t Enum
+def loadYaml(path):
+	fd = open(path, "r")
+	temp = yaml.full_load(fd)
+
+	fullMap = {}
+	for key in temp:
+		for modality in modality_t:
+			if modality.name == key:
+				fullMap[modality] = temp[key]
+				break
+
+	return fullMap
+
 # uses classes defined above to handle and process information
 # INPUT:
 #	expectationFilepath: the path to a file mapping subject ids to ACI jobids that are processing that subject's data
 #	baseLoc: the NeuroMap output root directory
-def driver(expectationFilepath, baseLoc):
+def driver(expectationFilepath, baseLoc, modeMapYaml):
 
-	# TODO: convert to YAML encoding
-	modeMapping = { 
-		modality_t.MRIQC: {"location": "mriqc_IQMs", "name": ".complete"},
-		modality_t.HEUDICONV: {"location": "bids", "name": ".heudiconv.complete"},
-		modality_t.FMRIPREP: {"location": "MR_Proc/fmriprep", "name": ".complete"},
-		modality_t.FIDELITY: {"location": "bids", "name": ".fidelity.complete"} 
-	}
+	modeMapping = loadYaml(modeMapYaml)
 
 	# parse expectationFilename to get list of subject numbers
 	fd = open(expectationFilepath, "r")
@@ -144,9 +157,10 @@ def getPipelineStatus():
 	expectationFilepath = sys.argv[1]
 	baseLoc = sys.argv[2]
 	outputFileDir = sys.argv[3]
+	modeMapYaml = sys.argv[4]
 
 	report = ""
-	report += driver(expectationFilepath, baseLoc)
+	report += driver(expectationFilepath, baseLoc, modeMapYaml)
 	report += "\n\n"
 	for i in compile_output.driver(expectationFilepath, outputFileDir):
 		report += i + "\n"

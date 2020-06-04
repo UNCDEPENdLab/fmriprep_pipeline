@@ -16,6 +16,7 @@ loc_mrproc_root=${loc_root}/MR_Proc #local directory for processed data. NB: If 
 emailRecipients="axm6053@psu.edu" # the email(s) to which the pipeline status report will be sent. NOTE: delimit multiple emails with a space!
 expectationFile=".subs_jobs.log" # temporary file. tracks which subjects should be processed
 outputDir="aci_output" # the directory where qsub output files go. this needs to match the "-o" and "-e" in every pbs script
+locYaml="pipeline_status/complete-placement.yaml"
 
 echo > $expectationFile
 allJobIds=""
@@ -84,7 +85,7 @@ done
 
 allJobIds=$(echo $allJobIds | sed 's/\.torque01\.[a-z0-9\.]*edu//g' | sed 's/^,*//') # isolate the job id number, while preserving the "after" dependency specification
 if [ ! -z $allJobIds ]; then
-	qsub -W depend=$allJobIds -d $PWD -v outputDir=$outputDir,expectationFile=$expectationFile,loc_root=${loc_root},TOEMAIL="$emailRecipients" report.sh
+	qsub -W depend=$allJobIds -d $PWD -v outputDir=$outputDir,expectationFile=$expectationFile,loc_root=${loc_root},TOEMAIL="$emailRecipients",locYaml=$locYaml report.sh
 else
 	echo "All subjects that have raw DICOM data have been fully processed: not submitting any jobs to qsub"
 fi
