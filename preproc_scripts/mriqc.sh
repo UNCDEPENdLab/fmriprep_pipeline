@@ -28,5 +28,5 @@ module load ants/2.2.0
 source /gpfs/group/mnh5174/default/lab_resources/lab_python3/bin/activate
 
 #mriqc ${loc_root}/bids/ ${loc_root}/mriqc_IQMs/ participant --participant-label $sub -w ${loc_root}/mriqc_tempfiles && date "+%m%d%y@%H:%M" > $loc_root/mriqc_IQMs/sub-$sub/.complete
-mkdir $loc_root/mriqc_IQMs/sub-$sub/
-date "+%m%d%y@%H:%M" > $loc_root/mriqc_IQMs/sub-$sub/.complete
+#mkdir $loc_root/mriqc_IQMs/sub-$sub/
+date "+%m%d%y@%H:%M" > $loc_root/bids/sub-$sub/.mriqc.complete

@@ -10,8 +10,7 @@
 
 #--use-plugin /gpfs/group/mnh5174/default/Daniel/s4_mri/preproc_scripts
 #source /gpfs/group/mnh5174/default/Daniel/s4_mri/preproc_scripts/fmriprep_wrapper.sh ${loc_root}/bids/ ${loc_mrproc_root}/ participant --participant_label $sub --nthreads 8 -w ${loc_root}/fmriprep_tempfiles && date "+%m%d%y@%H:%M" > $loc_mrproc_root/fmriprep/sub-$sub/.complete
-mkdir $loc_mrproc_root/fmriprep/sub-$sub/
-date "+%m%d%y@%H:%M" > $loc_mrproc_root/fmriprep/sub-$sub/.complete
+date "+%m%d%y@%H:%M" > $loc_root/bids/sub-$sub/.fmriprep.complete
 
 #add --low-mem?
 #add --mem-mb?
