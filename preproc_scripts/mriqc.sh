@@ -2,7 +2,8 @@
 
 #PBS -l nodes=1:ppn=8
 #PBS -l walltime=12:00:00
-#PBS -A open
+#PBS -A mnh5174_c_g_sc_default
+#PBS -M dpp5430@psu.edu
 #PBS -o aci_output
 #PBS -e aci_output
 #PBS -N mriqc
@@ -27,6 +28,4 @@ module load ants/2.2.0
 #load version 3 of Python (since the default is version 2, which doesn't work w/MRIQC)
 source /gpfs/group/mnh5174/default/lab_resources/lab_python3/bin/activate
 
-#mriqc ${loc_root}/bids/ ${loc_root}/mriqc_IQMs/ participant --participant-label $sub -w ${loc_root}/mriqc_tempfiles && date "+%m%d%y@%H:%M" > $loc_root/mriqc_IQMs/sub-$sub/.complete
-#mkdir $loc_root/mriqc_IQMs/sub-$sub/
-date "+%m%d%y@%H:%M" > $loc_root/bids/sub-$sub/.mriqc.complete
+mriqc ${loc_root}/bids/ ${loc_root}/mriqc_IQMs/ participant --participant-label $sub -w ${loc_root}/mriqc_tempfiles && date "+%m%d%y@%H:%M" > $loc_root/bids/sub-$sub/.mriqc.complete

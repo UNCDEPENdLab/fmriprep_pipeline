@@ -2,7 +2,8 @@
 
 #PBS -l nodes=1:ppn=1
 #PBS -l walltime=0:05:00
-#PBS -A open
+#PBS -A mnh5174_c_g_sc_default
+#PBS -M dpp5430@psu.edu
 #PBS -o aci_output
 #PBS -e aci_output
 #PBS -N report

@@ -1,17 +1,21 @@
 #!/bin/bash
-# NOTE: this command should be run from its directory, that is, within s4_mri/preproc_scripts. It currently makes the assumption that certain files are within the working directory
 
-#This script pulls DICOMs from SLEIC, and then queues jobs to convert DICOMs into NIFTIs, to quality-check NIFTIs using MRIQC, to check for correctness of scan parameters using Austin's scripts, and to preprocess the NIFTIs using fmriprep.
+# This script pulls DICOMs from SLEIC, and then queues jobs to convert DICOMs
+# into NIFTIs, to quality-check NIFTIs using MRIQC, to check for correctness of
+# scan parameters using Austin's scripts, and to preprocess the NIFTIs using
+# fmriprep.
+
+# NOTE: this command should be run from its directory, that is, within s4_mri/preproc_scripts. It currently makes the assumption that certain files are within the working directory
+# NOTE: the location of the pipeline input and output (loc_root, fmriprep output, mriqc output etc..), if changed, should be updated in the following locations:
+#	complete-placement.yaml
+#	each qsub script that leaves a .complete file after completion (e.g. fmirprep.sh, mriqc.sh)
+#	the "if" statements in this script that check to see if the .complete file exists before scheduling a job
 
 #Set environment variables
 source /gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/cfg_files/neuromap_transfer.cfg
-source_root=/gpfs/group/mnh5174/default/NeuroMAP
-loc_root=/storage/home/axm6053/NeuroMap_testing #local root directory for project
-loc_mrraw_root=${source_root}/MR_Raw #local dicom sync directory
-loc_mrproc_root=${loc_root}/MR_Proc #local directory for processed data. NB: If not defined, processed data will be placed inside subject directories in loc_mrraw_root
 
 #Pull raw MRI data from SLEIC
-#source /gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/syncMRCTR_MRRaw
+source /gpfs/group/mnh5174/default/lab_resources/fmri_processing_scripts/autopreproc/syncMRCTR_MRRaw
 
 emailRecipients="axm6053@psu.edu" # the email(s) to which the pipeline status report will be sent. NOTE: delimit multiple emails with a space!
 expectationFile=".subs_jobs.log" # temporary file. tracks which subjects should be processed
@@ -21,13 +25,14 @@ locYaml="pipeline_status/complete-placement.yaml"
 echo > $expectationFile
 allJobIds=""
 dependCom="afterany"
-for sub in $(seq -f "%03g" 8); do 
+for sub in $(seq -f "%03g" 2000); do 
 	#For each subject with raw data...
 	if [ -d "${loc_mrraw_root}/$sub" ]; then
 		echo $sub
 		#If they don't yet have BIDS data, run them through the full pipeline		
-		if [ ! -e "${loc_root}/bids/sub-${sub}/.heudiconv.complete" ];then
-			echo -e "\tsubject doesnt have bids: running full pipeline"
+		if [ ! -e "${loc_root}/bids/sub-${sub}/.heudiconv.complete" ]; then
+			echo -e "\trunning full pipeline"
+
 			# qsub returns the name of the job scheduled: [0-9]*.torque01.[a-z.]*.edu
 			heudiconv=$(qsub -v sub=$sub,loc_root=$loc_root,loc_mrraw_root=$loc_mrraw_root,repo_loc=$PWD heudiconv.sh)
 			mriqc=$(qsub -W depend=afterok:$heudiconv -v sub=$sub,loc_root=$loc_root mriqc.sh)
@@ -43,24 +48,25 @@ for sub in $(seq -f "%03g" 8); do
 			allJobIds=${allJobIds},${dependCom}:${heudiconv},${dependCom}:${fidelityjid},${dependCom}:${mriqc},${dependCom}:${fmriprep} # construct dependency argument
 			currentIds=${heudiconv},${fidelityjid},${mriqc},${fmriprep} # construct list of job ids associated with the current subject
 		else
-			echo -e "\tsubject has bids: running partially"
+			# clear out after each iteration
 			fmriprep=""
 			mriqc=""
+
 			#Run MRIQC, if not already run
-			if [ ! -e "${loc_root}/mriqc_IQMs/sub-${sub}/.complete" ]; then
+			if [ ! -e "${loc_root}/bids/sub-${sub}/.mriqc.complete" ]; then
 				mriqc=,${dependCom}:$(qsub -v sub=$sub,loc_root=$loc_root mriqc.sh)
-				echo -e "\tRunning mriqc"
+				echo -e "\trunning mriqc"
 			fi
 
 			#Run fmriprep, if not already run
-			if [ ! -e "${loc_mrproc_root}/fmriprep/sub-${sub}/.complete" ]; then
+			if [ ! -e "${loc_root}/bids/sub-${sub}/.fmriprep.complete" ]; then
 				fmriprep=,${dependCom}:$(qsub -v sub=$sub,loc_root=$loc_root,loc_mrproc_root=$loc_mrproc_root fmriprep.sh)
-				echo -e "\tRunning fmriprep"
+				echo -e "\trunning fmriprep"
 			fi
 
 			#Run fidelity checks case not already run
 			if [ ! -e "${loc_root}/bids/sub-${sub}/.fidelity.complete" ]; then
-				echo -e "\tRunning fidelity checks"
+				echo -e "\trunning fidelity checks"
 				# stagger dependencies to avoid race conditions
 				if [ -z "$fidelityjid" ]; then # first fidelity job
 					fidelityjid=,${dependCom}:$(qsub -v sub=$sub,loc_root=${loc_root},repo_loc=$PWD mri_fidelity_checks/run_fidelity_checks.pbs)
