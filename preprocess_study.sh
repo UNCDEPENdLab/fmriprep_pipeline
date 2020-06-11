@@ -74,6 +74,8 @@ fi
 #loop over subjects by findings all top-level directories in loc_mrraw_root that match the subid_regex (note that spaces in dirnames are a problem)
 subdirs=$( find "${loc_mrraw_root}" -mindepth 1 -maxdepth 1 -type d | grep -E "${subid_regex}" )
 
+allJobIds=""
+echo "" > $expectation_file
 for sdir in $subdirs; do
     rel "Processing subject directory: $sdir" c
 
@@ -99,23 +101,38 @@ for sdir in $subdirs; do
 
     #Run MRIQC, if not already run
     if [[ ${run_mriqc} -eq 1 && ! -d "${loc_root}/mriqc_IQMs/sub-${sub}" ]]; then
-	rel "qsub $depend_string $( build_qsub_string nodes=1:ppn=$mriqc_nthreads walltime=$mriqc_walltime ) \
+	mriqcID=$(rel "qsub $depend_string $( build_qsub_string nodes=1:ppn=$mriqc_nthreads walltime=$mriqc_walltime ) \
 	    -v $( envpass debug_pipeline sub loc_root log_file pipedir ) \
-	    ${pipedir}/qsub_mriqc_subject.sh" $rel_suffix
+	    ${pipedir}/qsub_mriqc_subject.sh" $rel_suffix)
     fi
 
     #Run fmriprep, if not already run
     if [[ ${run_fmriprep} -eq 1 && ! -d "${loc_mrproc_root}/fmriprep/sub-${sub}" ]]; then
-	rel "qsub $depend_string $( build_qsub_string nodes=1:ppn=$fmriprep_nthreads walltime=$fmriprep_walltime ) \
+	fmriprepID=$(rel "qsub $depend_string $( build_qsub_string nodes=1:ppn=$fmriprep_nthreads walltime=$fmriprep_walltime ) \
 	    -v $( envpass debug_pipeline sub loc_root loc_bids_root loc_mrproc_root fmriprep_nthreads log_file pipedir ) \
-	    ${pipedir}/qsub_fmriprep_subject.sh" $rel_suffix
+	    ${pipedir}/qsub_fmriprep_subject.sh" $rel_suffix)
     fi
 
     if [[ ${run_fidelity_checks} -eq 1 ]]; then
-	rel "qsub $depend_string $( build_qsub_string ) \
+	fidelityID=$(rel "qsub $depend_string $( build_qsub_string ) \
 	    -v $( envpass debug_pipeline sub fidelity_json loc_root loc_bids_root log_file pipedir ) \
-	    ${pipedir}/mri_fidelity_checks/qsub_fidelity_checks.sh" $rel_suffix
+	    ${pipedir}/mri_fidelity_checks/qsub_fidelity_checks.sh" $rel_suffix)
     fi
+
+	allJobIds=${allJobIds},${bids_jobid},${mriqcID},${fmriprepID},${fidelityID} # continue building list of all jobs being queued
+	# construct list of jobs spawned for the current subject only
+	currentJobIds=${bids_jobid},${mriqcID},${fmriprepID},${fidelityID}
+	currentJobIds=$(echo $currentJobIds | sed -e 's/,\+/,/g' -e 's/^,//')
+	echo -e "${sub}\t${currentJobIds}" >> $expectation_file # write subject-job pairing to file for status scripts
 
     rel "" c #blank line
 done
+
+# TODO: edit job ids. remove "torque" thing
+allJobIds=$(echo $allJobIds | sed -e 's/,\+/,/g' -e 's/^,//' -e 's/,$//') # convert jobs into dependency list
+if [ ! -z $allJobIds ]; then
+	allJobIds=$(echo $allJobIds | sed -e 's/,/,afterany:/g')
+	rel "qsub -W depend=$allJobIds -d $PWD -v $( envpass aci_output_dir expectation_file loc_root qsub_email loc_yaml ) report.sh" $rel_suffix
+else
+	rel "All subjects that have raw DICOM data have been fully processed: not submitting any jobs to qsub" c
+fi

@@ -11,4 +11,4 @@
 # NOTE: the mail command used here, when run as a job submitted with qsub, only works when run with the "-v" (verbose) option.
 
 reportName=pipeline_report-$(date +%m_%d_%y-%H:%M).log
-python pipeline_status/pipeline_status.py $expectationFile $loc_root $outputDir $locYaml | tee ${loc_root}/$reportName | mail -v -S smtp=smtp.psu.edu -s "Pipeline Report" -r DEPENdNeuroMapAutomation@psu.edu "$TOEMAIL"
+python pipeline_status/pipeline_status.py $expectation_file $loc_root $output_dir $loc_yaml | tee ${loc_root}/$reportName | mail -v -S smtp=smtp.psu.edu -s "Pipeline Report" -r DEPENdNeuroMapAutomation@psu.edu "$qsub_email"

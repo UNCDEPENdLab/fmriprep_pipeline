@@ -3,7 +3,8 @@
 #PBS -l nodes=1:ppn=1
 #PBS -l walltime=00:05:00
 #PBS -A mnh5174_c_g_sc_default
-#PBS -j oe
+#PBS -o aci_output
+#PBS -e aci_output
 
 # This file encapsulates the fidelity checking process
 # This file expects a range of numbers to be passed to it as arguments, specifying which subjects to run the fidelity checks on
@@ -48,4 +49,5 @@ code_dir="code"
 
 #python ${pipedir}/${code_dir}/test.py ${pipedir}/$fidelity_json $loc_bids_root ${loc_root}/fidelity_checks "$sub"
 [[ "$debug_pipeline" -eq 1 ]] && rel_suffix=c #if debug_pipeline is 1, only echo command to log, don't run it
-rel "python ${pipedir}/mri_fidelity_checks/${code_dir}/feeder.py ${pipedir}/$fidelity_json $loc_bids_root ${loc_root}/fidelity_checks $sub" $rel_suffix
+python ${repo_loc}/mri_fidelity_checks/${code_dir}/substatus.py ${loc_root}/fidelity_output_data "$sub" 
+rel "python ${pipedir}/mri_fidelity_checks/${code_dir}/feeder.py ${pipedir}/$fidelity_json $loc_bids_root ${loc_root}/fidelity_checks $sub && python ${pipedir}/mri_fidelity_checks/${code_dir}/substatus.py ${loc_root}/fidelity_output_data ${sub} && date \"+%m%d%y@%H:%M\" > $loc_bids_root/sub-$sub/.fidelity.complete" $rel_suffix
