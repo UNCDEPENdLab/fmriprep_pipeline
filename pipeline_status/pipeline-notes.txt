@@ -1,0 +1,15 @@
+places where pipeline output goes:
+
+$loc_mrraw_root/$sub: raw data
+$loc_root/bids/sub-$sub: heudiconv processed data
+$loc_root/mriqc_IQMs/sub-$sub: mriqc processed data
+$loc_mrproc_root/fmriprep/sub-$sub: fmriprep processed data
+$loc_root/fidelity_checks/fidelity_output_data: fidelity checks processed data
+
+where:
+	$loc_root = $G/NeuroMap
+	$loc_mrraw_root = $loc_root/MR_Raw
+	$loc_mrproc_root = $loc_root/MR_Proc
+
+for testing purposes, i want loc_mrraw_root to be independent of loc_root. I read the raw data but then write all processed data to a different location to avoid interfering with the official study data
+
