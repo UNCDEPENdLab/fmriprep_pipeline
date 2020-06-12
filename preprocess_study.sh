@@ -63,6 +63,7 @@ if [ $debug_pipeline -eq 1 ]; then #set one-minute execution times for subsidiar
     mriqc_walltime=00:01:00
     fmriprep_walltime=00:01:00
 fi
+[ $debug_pipeline -ne 2 ] && rel_suffix=o # TODO
     
 
 #default log file name is <pipedir>/<study_cfg_name>_log.txt
@@ -76,10 +77,15 @@ subdirs=$( find "${loc_mrraw_root}" -mindepth 1 -maxdepth 1 -type d | grep -E "$
 
 allJobIds=""
 echo "" > $expectation_file
+echo "rel_suffix = $rel_suffix"
 for sdir in $subdirs; do
     rel "Processing subject directory: $sdir" c
 
     sub=$( basename $sdir ) #subject id is folder name
+	echo $sub
+	if [[ $sub != "005" && $sub != "008" ]]; then
+		continue
+	fi
     #If they don't yet have BIDS data, run them through the full pipeline, enforcing dependency on BIDS conversion
     if [ ! -d "${loc_root}/bids/sub-${sub}" ]; then
 	heudiconv_cmd="qsub $( build_qsub_string walltime=$heudiconv_walltime ) \
@@ -93,6 +99,7 @@ for sdir in $subdirs; do
 	    #o argument to rel captures command output, which is the jobid
 	    bids_jobid=$( rel "$heudiconv_cmd" o )
 	fi
+	echo $bids_jobid
 	
 	depend_string="-W depend=afterok:${bids_jobid}"
     else
@@ -122,17 +129,17 @@ for sdir in $subdirs; do
 	allJobIds=${allJobIds},${bids_jobid},${mriqcID},${fmriprepID},${fidelityID} # continue building list of all jobs being queued
 	# construct list of jobs spawned for the current subject only
 	currentJobIds=${bids_jobid},${mriqcID},${fmriprepID},${fidelityID}
-	currentJobIds=$(echo $currentJobIds | sed -e 's/,\+/,/g' -e 's/^,//')
+	currentJobIds=$(echo $currentJobIds | sed -e 's/,\+/,/g' -e 's/^,//' -e 's/\.torque01\.[a-z0-9\.]*edu//g')
 	echo -e "${sub}\t${currentJobIds}" >> $expectation_file # write subject-job pairing to file for status scripts
 
     rel "" c #blank line
 done
 
-# TODO: edit job ids. remove "torque" thing
-allJobIds=$(echo $allJobIds | sed -e 's/,\+/,/g' -e 's/^,//' -e 's/,$//') # convert jobs into dependency list
+allJobIds=$(echo $allJobIds | sed -e 's/,\+/,/g' -e 's/,$//' -e 's/\.torque01\.[a-z0-9\.]*edu//g') # convert jobs into dependency list
 if [ ! -z $allJobIds ]; then
-	allJobIds=$(echo $allJobIds | sed -e 's/,/,afterany:/g')
-	rel "qsub -W depend=$allJobIds -d $PWD -v $( envpass aci_output_dir expectation_file loc_root qsub_email loc_yaml ) report.sh" $rel_suffix
+	allJobIds=$(echo $allJobIds | sed -e 's/,/,afterany:/g' -e 's/^,//')
+	echo $allJobIds
+	rel "qsub -W depend=$allJobIds -d $PWD $( build_qsub_string ) -v $( envpass aci_output_dir expectation_file loc_root qsub_email loc_yaml ) report.sh" $rel_suffix
 else
 	rel "All subjects that have raw DICOM data have been fully processed: not submitting any jobs to qsub" c
 fi

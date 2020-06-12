@@ -210,3 +210,8 @@ def getUpperPathFromPath(path):
 	else:
 		return path[:path.rfind("/")+1]
 
+def ensureTrailingSlash(string):
+	if string[-1] != "/":
+		return string + "/"
+	else:
+		return string

@@ -5,6 +5,7 @@
 #PBS -A mnh5174_c_g_sc_default
 #PBS -o aci_output
 #PBS -e aci_output
+#PBS -N heudiconv
 
 set -e
 cd $PBS_O_WORKDIR
