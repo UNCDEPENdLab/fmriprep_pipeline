@@ -123,8 +123,46 @@ function rel() {
     fi
 
     # how long did it take. write to file if we have a logfile
-    [ $timeit -eq 1 ] && eval "echo -e \"#\ttook $((($toc - $tic ))) seconds\" $pipesave"
+    [ $timeit -eq 1 ] && eval "echo -e \"\#\ttook $((($toc - $tic ))) seconds\" $pipesave"
 
     [ $print_stdout -eq 1 ] && echo "$cmdOutput" #print result to screen so it can be captured by caller
     return $cmdExit #exit status of command
+}
+
+# this function extracts the jobID number from a qsub job listing and intelligently constructs the desired dependency string
+# expects input like: afterok [0-9]*<other stuff> afterany [0-9]*<other stuff> ...
+function build_depend_string() {
+	local base="-W depend="
+	local args=""
+	while [[ $# -gt 0 ]]; do
+		if [[ ! -z $2 && $2 != "\"\"" ]]; then
+			args=${args}$(link_job_listings ${1}:${2})
+		fi
+
+		shift
+		shift
+	done
+
+	args=$(echo $args | sed 's/,$//')
+	
+	if [[ -z args ]]; then
+		echo ""
+	else
+		echo ${base}${args}
+	fi
+}
+
+# links together parsed qsub job listings
+# NOTE: leaves a trailing comma
+function link_job_listings() {
+
+	base=""
+	for arg in $@; do
+		arg=$(echo $arg | sed -e 's/\.torque01\.[a-z0-9\.]*edu//g') # get just the number
+		base=${base}${arg},
+	done
+
+	#base=$(echo $base | sed -e 's/,$//')
+
+	echo $base
 }
