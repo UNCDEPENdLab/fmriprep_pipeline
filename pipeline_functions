@@ -74,6 +74,7 @@ function rel() {
     local cmdExit=0
     local cmdOutput=""
     local thisarg=
+	local substitute=""
     
     if [ $# -gt 1 ]; then
 	#loop over remaining arguments
@@ -85,6 +86,8 @@ function rel() {
 		timeit=1
 	    elif [[ $thisarg = o ]]; then #print the output of the command (returning it for use)
 		print_stdout=1
+		elif [[ $comment -eq 1 ]]; then #get value to return in place of running the command
+		substitute=$thisarg
 	    fi	    
 	    
 	    #printf '%s\n' "Arg $i: ${!i}"
@@ -107,19 +110,21 @@ function rel() {
     fi
 
     if [ $comment -eq 0 ]; then
-	#echo command to screen verbatim if we are not returning stdout
-	[ $print_stdout -eq 0 ] && echo ${cmd}
+		#echo command to screen verbatim if we are not returning stdout
+		[ $print_stdout -eq 0 ] && echo ${cmd}
 
-	#run command
-	tic=$(date +%s)
-	cmdOutput=$( eval ${cmd} ) #capture output of command
-	cmdExit=$?
-	toc=$(date +%s)
-	[ $print_stdout -eq 1 ] && echo "## stdout: $cmdOutput" >> "${log_file}"
-    else
-	#echo command to screen with dashes to offset text visually
-	#if a blank character string is passed as the command, just include this without dashes
-	[[ "${cmd}" == "" ]] && echo "" || echo -e "----  ${cmd}"
+		#run command
+		tic=$(date +%s)
+		cmdOutput=$( eval ${cmd} ) #capture output of command
+		cmdExit=$?
+		toc=$(date +%s)
+		[ $print_stdout -eq 1 ] && echo "## stdout: $cmdOutput" >> "${log_file}"
+    elif [[ $substitute != "" ]]; then #print substituted/faked comand output instead of command
+		echo $substitute
+	else
+		#echo command to screen with dashes to offset text visually
+		#if a blank character string is passed as the command, just include this without dashes
+		[[ "${cmd}" == "" ]] && echo "" || echo -e "----  ${cmd}"
     fi
 
     # how long did it take. write to file if we have a logfile
@@ -130,7 +135,7 @@ function rel() {
 }
 
 # this function extracts the jobID number from a qsub job listing and intelligently constructs the desired dependency string
-# expects input like: afterok [0-9]*<other stuff> afterany [0-9]*<other stuff> ...
+# expects input like: afterok <qsub job listing> afterany <qsub job listing> ...
 function build_depend_string() {
 	local base="-W depend="
 	local args=""
@@ -152,7 +157,8 @@ function build_depend_string() {
 	fi
 }
 
-# links together parsed qsub job listings
+# parses out the pure qsub job number
+# links a list of these together
 # NOTE: leaves a trailing comma
 function link_job_listings() {
 

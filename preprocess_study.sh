@@ -88,44 +88,42 @@ for sdir in $subdirs; do
 	fi
     #If they don't yet have BIDS data, run them through the full pipeline, enforcing dependency on BIDS conversion
     if [ ! -e "${loc_bids_root}/sub-${sub}/.heudiconv.complete" ]; then
-		heudiconv_cmd="qsub $( build_qsub_string walltime=$heudiconv_walltime ) \
-					-v $( envpass rel_suffix sub loc_bids_root loc_mrraw_root log_file pipedir heudiconv_location heudiconv_heuristic debug_pipeline ) qsub_heudiconv_subject.sh"
-		
-		if [ "$rel_suffix" == "c" ]; then
-			#run in debug mode
-			rel "$heudiconv_cmd" $rel_suffix
-			bids_jobid="dummy12345"
-		else
-			#o argument to rel captures command output, which is the jobid
-			bids_jobid=$( rel "$heudiconv_cmd" o )
-		fi
-		echo $bids_jobid
+		heudiconvID=$(rel "qsub $( build_qsub_string walltime=$heudiconv_walltime ) \
+			-v $( envpass rel_suffix sub loc_bids_root loc_mrraw_root log_file pipedir heudiconv_location heudiconv_heuristic debug_pipeline ) \
+			${pipedir}/qsub_heudiconv_subject.sh" $rel_suffix heudiconvID-$sub)
     fi
 
     #Run MRIQC, if not already run
     if [[ ${run_mriqc} -eq 1 && ! -e "${loc_bids_root}/sub-${sub}/.mriqc.complete" ]]; then
-		mriqcID=$(rel "qsub $( build_depend_string afterok "$bids_jobid" ) $( build_qsub_string nodes=1:ppn=$mriqc_nthreads walltime=$mriqc_walltime ) \
+		mriqcID=$(rel "qsub $( build_depend_string afterok "$heudiconvID" ) $( build_qsub_string nodes=1:ppn=$mriqc_nthreads walltime=$mriqc_walltime ) \
 			-v $( envpass rel_suffix loc_bids_root debug_pipeline sub loc_root log_file pipedir ) \
-			${pipedir}/qsub_mriqc_subject.sh" $rel_suffix)
+			${pipedir}/qsub_mriqc_subject.sh" $rel_suffix mriqcID-$sub)
     fi
 
     #Run fmriprep, if not already run
     if [[ ${run_fmriprep} -eq 1 && ! -e "${loc_bids_root}/sub-${sub}/.fmriprep.complete" ]]; then
-		fmriprepID=$(rel "qsub $( build_depend_string afterok "$bids_jobid" ) $( build_qsub_string nodes=1:ppn=$fmriprep_nthreads walltime=$fmriprep_walltime ) \
+		fmriprepID=$(rel "qsub $( build_depend_string afterok "$heudiconvID" ) $( build_qsub_string nodes=1:ppn=$fmriprep_nthreads walltime=$fmriprep_walltime ) \
 			-v $( envpass rel_suffix debug_pipeline sub loc_root loc_bids_root loc_mrproc_root fmriprep_nthreads log_file pipedir ) \
-			${pipedir}/qsub_fmriprep_subject.sh" $rel_suffix)
+			${pipedir}/qsub_fmriprep_subject.sh" $rel_suffix fmriprepID-$sub)
     fi
 
     if [[ ${run_fidelity_checks} -eq 1 && ! -e "${loc_bids_root}/sub-${sub}/.fidelity.complete" ]]; then
-		fidelityID=$(rel "qsub $( build_depend_string afterok "$bids_jobid" afterany "$fidelityID") $( build_qsub_string ) \
+		fidelityID=$(rel "qsub $( build_depend_string afterok "$heudiconvID" afterany "$fidelityID") $( build_qsub_string ) \
 			-v $( envpass rel_suffix debug_pipeline sub fidelity_json loc_root loc_bids_root log_file pipedir ) \
-			${pipedir}/mri_fidelity_checks/qsub_fidelity_checks.sh" $rel_suffix)
+			${pipedir}/mri_fidelity_checks/qsub_fidelity_checks.sh" $rel_suffix fidelityID-$sub)
     fi
+
+	if [[ $debug_pipeline -eq 2 ]]; then
+		echo $heudiconvID
+		echo $mriqcID
+		echo $fmriprepID
+		echo $fidelityID
+	fi
 
 	# track job ids over run
 	currentJobIds=$(link_job_listings $mriqcID $fmriprepID $fidelityID $bids_jobid | sed 's/,*$//')
 	echo -e "${sub}\t${currentJobIds}" >> $expectation_file # write subject-job pairing to file for status scripts
-	allJobIds="${allJobIds} afterany \"$mriqcID\" afterany \"$fmriprepID\" afterany \"$fidelityID\" afterany \"$bids_jobid\"" # continue building list of all jobs being queued
+	allJobIds="${allJobIds} afterany \"$mriqcID\" afterany \"$fmriprepID\" afterany \"$fidelityID\" afterany \"$heudiconvID\"" # continue building list of all jobs being queued
 
     rel "" c #blank line
 done
@@ -134,7 +132,9 @@ done
 if [ ! -z "$allJobIds" ]; then
 	allJobIds=$(build_depend_string $allJobIds | sed 's/,*$//')
 	echo $allJobIds
-	rel "qsub $allJobIds -d $PWD $( build_qsub_string ) -v $( envpass aci_output_dir expectation_file loc_root qsub_email loc_yaml ) report.sh" $rel_suffix
+	rel "qsub $allJobIds -d $PWD  $( build_qsub_string ) \
+		-v $( envpass rel_suffix debug_pipeline aci_output_dir expectation_file loc_root qsub_email loc_yaml ) \
+		${pipedir}/report.sh" $rel_suffix
 else
 	rel "All subjects that have raw DICOM data have been fully processed: not submitting any jobs to qsub" c
 fi
