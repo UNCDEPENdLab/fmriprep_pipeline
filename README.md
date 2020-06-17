@@ -55,7 +55,7 @@ Additionally, for organization, the location ACI output files should be placed i
 This `<directory>` is passed as an argument to the status scripts.
 
 ### Report Compilation
-Information gained from the above is compiled into a single output file, and is placed in the NeuroMap directory (specified by `loc_root` in [`preprocess.sh`](preprocess.sh)). Also, this report is emailed to an arbitrary number of email addresses, which are specified in [`preprocess.sh`](preprocess.sh) via `emailRecipients`. 
+Information gained from the above is compiled into a single output file, and is placed in the NeuroMap directory (specified by `loc_root` in [`preprocess.sh`](preprocess.sh)). Also, this report is emailed to an arbitrary number of email addresses, which are specified in `qsub_email`. 
 
 ---
 

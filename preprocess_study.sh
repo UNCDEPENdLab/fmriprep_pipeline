@@ -61,6 +61,7 @@ if [ $debug_pipeline -eq 1 ]; then #set one-minute execution times for subsidiar
     heudiconv_walltime=00:01:00
     mriqc_walltime=00:01:00
     fmriprep_walltime=00:01:00
+fi
 
 if [ $debug_pipeline -eq 2 ]; then
 	rel_suffix=c
@@ -79,15 +80,11 @@ subdirs=$( find "${loc_mrraw_root}" -mindepth 1 -maxdepth 1 -type d | grep -E "$
 
 allJobIds=""
 echo "" > $expectation_file
-echo "rel_suffix = $rel_suffix"
 for sdir in $subdirs; do
     rel "Processing subject directory: $sdir" c
 
     sub=$( basename $sdir ) #subject id is folder name
-	echo $sub
-	if [[ $sub != "005" && $sub != "008" ]]; then
-		continue
-	fi
+
     #If they don't yet have BIDS data, run them through the full pipeline, enforcing dependency on BIDS conversion
     if [ ! -e "${loc_bids_root}/sub-${sub}/.heudiconv.complete" ]; then
 		heudiconvID=$(rel "qsub $( build_qsub_string walltime=$heudiconv_walltime ) \
@@ -131,9 +128,8 @@ for sdir in $subdirs; do
 done
 
 # schedule report
-if [ ! -z "$allJobIds" ]; then
+if [ ! -z $(echo $allJobIds | sed -e 's/afterany//g' -e 's/ *//g' -e 's/"*//g') ]; then
 	allJobIds=$(build_depend_string $allJobIds | sed 's/,*$//')
-	echo $allJobIds
 	rel "qsub $allJobIds -d $PWD  $( build_qsub_string ) \
 		-v $( envpass rel_suffix debug_pipeline aci_output_dir expectation_file loc_root qsub_email loc_yaml ) \
 		${pipedir}/report.sh" $rel_suffix
