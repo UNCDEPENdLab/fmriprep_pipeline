@@ -2,7 +2,9 @@
 #PBS -l nodes=1:ppn=8
 #PBS -l walltime=12:00:00
 #PBS -A mnh5174_c_g_sc_default
-#PBS -j oe
+#PBS -o aci_output
+#PBS -e aci_output
+#PBS -N mriqc
 
 set -e
 cd $PBS_O_WORKDIR
@@ -50,4 +52,4 @@ module load fsl/5.0.11 #Using version 6 of FSL creates problems
 
 ####
 [[ "$debug_pipeline" -eq 1 ]] && rel_suffix=c #if debug_pipeline is 1, only echo command to log, don't run it
-rel "${mriqc_location} ${loc_root}/bids/ ${loc_root}/mriqc_IQMs/ participant --participant-label $sub -w ${loc_root}/mriqc_tempfiles" $rel_suffix
+rel "${mriqc_location} ${loc_root}/bids/ ${loc_root}/mriqc_IQMs/ participant --participant-label $sub -w ${loc_root}/mriqc_tempfiles && date \"+%m%d%y@%H:%M\" > $loc_bids_root/sub-$sub/.mriqc.complete" $rel_suffix

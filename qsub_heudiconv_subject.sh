@@ -3,7 +3,9 @@
 #PBS -l nodes=1:ppn=1
 #PBS -l walltime=2:00:00
 #PBS -A mnh5174_c_g_sc_default
-#PBS -j oe
+#PBS -o aci_output
+#PBS -e aci_output
+#PBS -N heudiconv
 
 set -e
 cd $PBS_O_WORKDIR
@@ -34,5 +36,5 @@ source "$env_file" #setup relevant variables for this processing environment
 ####
 #run heudiconv
 [[ "$debug_pipeline" -eq 1 ]] && rel_suffix=c #if debug_pipeline is 1, only echo command to log, don't run it
-rel "${heudiconv_location} -d ${loc_mrraw_root}/{subject}/*/*.dcm -s $sub -f ${heudiconv_heuristic} -c dcm2niix -o ${loc_bids_root} -b" $rel_suffix
+rel "${heudiconv_location} -d ${loc_mrraw_root}/{subject}/*/*.dcm -s $sub -f ${heudiconv_heuristic} -c dcm2niix -o ${loc_bids_root} -b && date \"+%m%d%y@%H:%M\" > ${loc_bids_root}/sub-${sub}/.heudiconv.complete" $rel_suffix
 rel "${pipedir}/add_intendedfor_bold ${loc_bids_root}/sub-${sub}" $rel_suffix #add IntendedFor field to FMAP jsons, pointing to all BOLD

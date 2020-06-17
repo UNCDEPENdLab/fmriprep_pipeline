@@ -48,11 +48,12 @@ class check:
 
 	def print(self):
 		if len(self.index) == 0:
-			print("%s %s %s\n\t\tExpected: %s\n\t\tActual: %s" % (self.task, self.scanType, self.fieldName, self.expected[0], self.actual[0]))
+			print("%s %s %s\n\t\tExpected: %s\tActual: %s" % (self.task, self.scanType, self.fieldName, self.expected[0], self.actual[0]))
 		else:
-			print("%s %s %s" % (self.task, self.scanType, self.fieldName))
+			print("%s %s %s: (index, expected, actual)\n\t\t" % (self.task, self.scanType, self.fieldName), end="")
 			for i in range(len(self.expected)):
-				print("\t\tIndex: %s\tExpected: %s\tActual: %s" % (self.index[i], self.expected[i].ljust(12, " "), self.actual[i].ljust(12, " ")))
+				print("(%s, %s, %s), " % (self.index[i], self.expected[i], self.actual[i]), end="")
+			print()
 
 # INPUT:
 # 	subs is a list of subject objects

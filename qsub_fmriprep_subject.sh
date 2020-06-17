@@ -3,7 +3,9 @@
 #PBS -l nodes=1:ppn=4
 #PBS -l walltime=24:00:00
 #PBS -A mnh5174_c_g_sc_default
-#PBS -j oe
+#PBS -o aci_output
+#PBS -e aci_output
+#PBS -N fmriprep
 
 set -e
 cd $PBS_O_WORKDIR
@@ -30,7 +32,7 @@ source "$env_file" #setup relevant variables for this processing environment
 
 ####
 [[ "$debug_pipeline" -eq 1 ]] && rel_suffix=c #if debug_pipeline is 1, only echo command to log, don't run it
-rel "${pipedir}/fmriprep_wrapper ${loc_bids_root} ${loc_mrproc_root}/ participant --participant_label $sub --nthreads $fmriprep_nthreads -w ${loc_root}/fmriprep_tempfiles" $rel_suffix
+rel "${pipedir}/fmriprep_wrapper ${loc_bids_root} ${loc_mrproc_root}/ participant --participant_label $sub --nthreads $fmriprep_nthreads -w ${loc_root}/fmriprep_tempfiles && date \"+%m%d%y@%H:%M\" > $loc_bids_root/sub-$sub/.fmriprep.complete" $rel_suffix
 
 #add --low-mem?
 #add --mem-mb?

@@ -10,7 +10,7 @@ from functools import cmp_to_key
 import helper
 import compare
 
-OUTPUT_DIR = "fidelity_output_data" 
+OUTPUT_DIR = "fidelity_checks" # will attempt to create this directory within the specified output location
 WRITE_OK = False
 
 # compares two file paths
@@ -331,8 +331,8 @@ def checkFiles(templatePath, dataDir, subIDs):
 			files.append(f)
 	
 	if len(files) == 0:
-		print("feeder.py: WARNING: No matching files were found. Aborting...")
-		exit(-1)
+		print("feeder.py: WARNING: No matching files were found. Aborting...", file=sys.stderr)
+		sys.exit(-1)
 
 
 	# sort files by their corresponding scan
@@ -361,7 +361,11 @@ def checkFiles(templatePath, dataDir, subIDs):
 			writeScanCheck(aggOut)
 
 # parse command line arguments and feed to main function
-OUTPUT_DIR = sys.argv[3] + "/" + OUTPUT_DIR
+# argv1 = templatePath
+# argv2 = dataDir
+# argv3 = output dir
+# argv4- = subject ids
+OUTPUT_DIR = helper.ensureTrailingSlash(sys.argv[3]) + OUTPUT_DIR
 nums = helper.readNumsOrRangesFromCmdLine(4)
 nums = list(str(i) for i in nums)
 checkFiles(sys.argv[1], sys.argv[2], nums)
