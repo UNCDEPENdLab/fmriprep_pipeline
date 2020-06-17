@@ -57,14 +57,16 @@ source "$study_cfg_file"
 [ -z "$debug_pipeline" ] && debug_pipeline=0 #whether to just echo all commands instead of executing them
 
 #if debug_pipeline is 2, do not qsub any jobs, just echo all commands in the loop below as comments
-[ $debug_pipeline -eq 2 ] && rel_suffix=c
 if [ $debug_pipeline -eq 1 ]; then #set one-minute execution times for subsidiary scripts for testing
     heudiconv_walltime=00:01:00
     mriqc_walltime=00:01:00
     fmriprep_walltime=00:01:00
+
+if [ $debug_pipeline -eq 2 ]; then
+	rel_suffix=c
+else
+	rel_suffix=o
 fi
-[ $debug_pipeline -ne 2 ] && rel_suffix=o # TODO
-    
 
 #default log file name is <pipedir>/<study_cfg_name>_log.txt
 [ -z "$log_file" ] && log_file=$( echo -n "$study_cfg_file" | perl -pe 's/\.\w+$//' | cat <(echo -n "${pipedir}/") - <(echo "_log.txt") )
