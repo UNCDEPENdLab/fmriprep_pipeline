@@ -79,7 +79,7 @@ def prepOutputDir():
 		#	else:
 		#		WRITE_OK = True
 	else:
-		os.mkdir(OUTPUT_DIR)
+		os.makedirs(OUTPUT_DIR) #os.mkdir(OUTPUT_DIR)
 
 	return 0;
 
