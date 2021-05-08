@@ -134,7 +134,11 @@ class fidelityTemplate:
 		else:
 			scanType = helper.getScanType(filename)
 		fileSuffix = helper.getFileSuffix(filename)
-
+		
+		# add "_sbref" in task name if scanType is sbref to match task names in neuromap_validation.json (template)
+		if scanType == "sbref"
+			task = task + "_sbref"
+	
 		return task, fileSuffix, subID, scanType
 
 	def guessIsKey(self, key, guess):
