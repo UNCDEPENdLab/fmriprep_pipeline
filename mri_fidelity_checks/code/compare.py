@@ -136,8 +136,6 @@ class fidelityTemplate:
 		fileSuffix = helper.getFileSuffix(filename)
 		
 		# add "_sbref" in task name if scanType is sbref to match task names in neuromap_validation.json (template)
-		if scanType == "sbref":
-			task = task + "_sbref"
 	
 		return task, fileSuffix, subID, scanType
 
@@ -174,10 +172,16 @@ class fidelityTemplate:
 		elif ret != True:
 			task = ret
 	
+		# task name in template file has <taskName>_sbref for sbref files
+		if scanType == "sbref":
+			taskTemp = task + "_sbref"
+		else:
+			taskTemp = task
+
 		# get the data from the file
 		exData = self.getExData(exFileName, fileSuffix)
 		# select which set of fidelity checks applies to this file
-		checks = self.data[task][fileSuffix]
+		checks = self.data[taskTemp][fileSuffix]
 		
 		output = []
 		if (manual_verify):
