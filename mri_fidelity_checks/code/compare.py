@@ -20,7 +20,7 @@ import os
 import sys
 import helper
 
-TOL = .0001
+TOL = .01
 manual_verify = False
 
 # this class organizes the data associated with a single file analysis: a comparison of a single file against the json template file
