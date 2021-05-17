@@ -202,7 +202,6 @@ def getFilenameFromPath(path):
 	return filename
 
 def getUpperPathFromPath(path):
-	
 	if path == None:
 		return -1
 	elif "/" not in path:
@@ -215,3 +214,17 @@ def ensureTrailingSlash(string):
 		return string + "/"
 	else:
 		return string
+
+# extract run number from filename to perform fidelity checks on each run of a task
+def getRunNumberFromFilename(filename):
+	filename = getFilenameFromPath(filename)
+	filename_split = filename.split("_")
+	runNum = 1 # if filename doesn't contain "run", default value set to 1
+	for part in filename_split:
+		if "run" in part:
+			runNum = int(part.split("-")[1])
+			break
+
+	return runNum
+ 
+ 

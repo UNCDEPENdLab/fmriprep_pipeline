@@ -26,13 +26,14 @@ manual_verify = False
 # this class organizes the data associated with a single file analysis: a comparison of a single file against the json template file
 class fileAnalysis:
 
-	def __init__(self, filename, fileSuffix, task, scanType, subID, fidelityChecks):
+	def __init__(self, filename, fileSuffix, task, scanType, subID, runNum, fidelityChecks):
 		self.filename = filename # the filename, not the path
 		self.fileSuffix = fileSuffix # the suffix of the file (json or nii)
 		self.task = task # the task done during the scan. (rest_post, ...)
 		self.scanType = scanType # the type of scan done. (bold or sbref)
 		self.subID = subID
 		self.fidelityChecks = fidelityChecks # array of fidelity_check objects
+		self.runNum = runNum # run number for the current task
 	
 	# INPUT:
 	#	other: a fileAnalysis object
@@ -40,12 +41,12 @@ class fileAnalysis:
 	#	True if the only thing different between this fileAnalysis and the other is their file suffix. that is, they represent the same scan, just one is the nifti file and the other is the json file
 	#	False otherwise
 	def sameScan(self, other):
-		if self.task == other.task and self.scanType == other.scanType and self.subID == other.subID and helper.getUpperPathFromPath(self.filename) == helper.getUpperPathFromPath(other.filename):
+		if self.task == other.task and self.scanType == other.scanType and self.subID == other.subID and helper.getUpperPathFromPath(self.filename) == helper.getUpperPathFromPath(other.filename) and self.runNum == other.runNum:
 			return True
 		return False
 
 	def print(self):
-		print("Scan type: " + self.task + "\nFile type: " + self.scanType + "\nFile suffix: " + self.fileSuffix + "\nSubject Id: " + str(self.subID))
+		print("Scan type: " + self.task + "\nFile type: " + self.scanType + "\nFile suffix: " + self.fileSuffix + "\nSubject Id: " + str(self.subID) + "\nRun number" + str(self.runNum))
 		print("\t" + str(self.fidelityChecks))
 		print()
 
@@ -53,6 +54,7 @@ class fileAnalysis:
 class fidelityTemplate:
 	
 	def __init__(self, jsonFileName):
+		#print("in fidelityTemplate")
 		f = open(jsonFileName, "r")
 
 		# convert raw json to dictionary
@@ -126,18 +128,18 @@ class fidelityTemplate:
 	# returns the scan type (rest_pre, rest_post) by extraction from filename
 	# returns file type (json or nifti) by checking file suffix
 	# returns subject ID number
+ 	 # return run number from filename
 	def parseFileName(self, filename):
 		subID = helper.getSubjectIdOfPath(filename)
 		task = helper.getTaskFromFilename(filename)
+		runNum = helper.getRunNumberFromFilename(filename)
 		if task == "T1w":
 			scanType = "---"
 		else:
 			scanType = helper.getScanType(filename)
 		fileSuffix = helper.getFileSuffix(filename)
 		
-		# add "_sbref" in task name if scanType is sbref to match task names in neuromap_validation.json (template)
-	
-		return task, fileSuffix, subID, scanType
+		return task, fileSuffix, subID, scanType, runNum
 
 	def guessIsKey(self, key, guess):
 		key_mod = key.replace('_', '').replace('-', '').lower()
@@ -162,7 +164,7 @@ class fidelityTemplate:
 	# 		output: array of 2-tuples: (field, [0,1])
 	def compareToFile(self, exFileName):
 		# parse filename to get scan and file type
-		task, fileSuffix, subID, scanType = self.parseFileName(exFileName)
+		task, fileSuffix, subID, scanType, runNum = self.parseFileName(exFileName)
 		if task == None:
 			return None
 
@@ -232,8 +234,7 @@ class fidelityTemplate:
 
 		# sort output by key name to ensure consistency
 		output = sorted(output, key=lambda x: x.getName()) 
-
-		return fileAnalysis(exFileName, fileSuffix, task, scanType, subID, output)
+		return fileAnalysis(exFileName, fileSuffix, task, scanType, subID,runNum, output)
 
 	# assuming objects have been interpreted at this point
 	# takes two objects, that is, a piece of text, a number, or an array of either and tests their equality

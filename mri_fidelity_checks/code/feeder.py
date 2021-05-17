@@ -121,7 +121,7 @@ def getSuffixCol(col, suf):
 # OUTPUT:
 #	writes the headers of the task to the file
 def write_headers(fd, data):
-	fd.write("UpperPath\tSubId\tType\t")
+	fd.write("UpperPath\tSubId\tType\tRunNum\t")
 	fileSuffixes = ["json", "nifti"]
 	fieldCount = [0, 0]
 	for i in range(len(fileSuffixes)):
@@ -164,7 +164,7 @@ def write_data(task, data):
 		# each collate should have the same scanType and subID
 		cur_line = ""
 
-		cur_line += str(helper.getUpperPathFromPath(collate[0].filename)) + "\t" + str(collate[0].subID) + "\t" + collate[0].scanType + "\t"
+		cur_line += str(helper.getUpperPathFromPath(collate[0].filename)) + "\t" + str(collate[0].subID) + "\t" + collate[0].scanType + "\t" + str(collate[0].runNum) + "\t"
 
 		# write json data
 		cur_line, wrote = write_data_if(cur_line, "json", collate)
@@ -193,10 +193,10 @@ def write_data(task, data):
 		fd.close()
 
 # INPUT: line is a string, a single line from a fidelity checks .tsv file
-# OUTPUT: returns a 3-tuple of the first 3 attributes on a line: file path, subject id, scan type (bold or sbref)
+# OUTPUT: returns a 3-tuple of the first 3 attributes on a line: file path, subject id, scan type (bold or sbref), run number
 def getLineAttrs(line):
 	parts = line.split("\t")
-	return (parts[0], eval(parts[1]), parts[2])
+	return (parts[0], eval(parts[1]), parts[2], eval(parts[3]))
 
 # INPUT: 
 #	lines is a list of strings which are terminated by a newline
@@ -205,23 +205,26 @@ def getLineAttrs(line):
 #	modifies lines with new_line inserted into the appropriate place
 # This function decides whether or not a new line should replace an old line in a file and, if not, where to place it
 def organizeLines(lines, new_line):
-	
-	
 	newAttrs = getLineAttrs(new_line)
 	offset = 1
 	for i in range(offset, len(lines[offset:]) + offset): # don't process the header line
 		curAttrs = getLineAttrs(lines[i])
 
 		if newAttrs[1] < curAttrs[1]: # compare subjects
-			
 			# insert before
 			lines.insert(i, new_line)
 			return
-		# replacement should occur if the first 3 fields are the same (file, id, scan type)
+		
 		elif newAttrs[1] == curAttrs[1] and newAttrs[0] == curAttrs[0] and newAttrs[2] == curAttrs[2]: # determine if new should replace the current line
-			lines.insert(i, new_line)
-			lines.pop(i+1)
-			return
+		 # replacement should occur if the (file, id, scan type, run number) fields are the same
+			if newAttrs[3] == curAttrs[3]: # if run number is same 
+				lines.insert(i, new_line)
+				lines.pop(i+1)
+				return
+     			# if newAttrs[3] == curAttrs[3]+1: # next run number
+				# insert after
+			#	lines.insert(i+1, new_line)
+			#	return
 
 	# insert after "-" at the end of the file
 	lines.append(new_line)
