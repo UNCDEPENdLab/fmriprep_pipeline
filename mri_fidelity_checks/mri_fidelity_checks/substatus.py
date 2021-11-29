@@ -110,11 +110,7 @@ def extractChecksIntoSubs(filename, subs):
 
 		#line = fd.readline().split(delim)[:-1]
 
-def main():
-	dir_path = sys.argv[1]
-	# read command line input and prep desired subjects
-	nums = helper.readNumsOrRangesFromCmdLine(2)
-
+def checkStatus(dir_path, nums):
 	# prep subjects
 	nums.sort()
 	subs = []
@@ -135,4 +131,8 @@ def main():
 		i.printStatus()
 
 if __name__ == "__main__":
-	main()
+	dir_path = sys.argv[1]
+	# read command line input and prep desired subjects
+	nums = helper.readNumsOrRangesFromCmdLine(2)
+
+	checkStatus(dir_path, nums)
