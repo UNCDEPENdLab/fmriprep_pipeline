@@ -368,7 +368,8 @@ def checkFiles(templatePath, dataDir, subIDs):
 # argv2 = dataDir
 # argv3 = output dir
 # argv4- = subject ids
-OUTPUT_DIR = helper.ensureTrailingSlash(sys.argv[3]) + OUTPUT_DIR
-nums = helper.readNumsOrRangesFromCmdLine(4)
-nums = list(str(i) for i in nums)
-checkFiles(sys.argv[1], sys.argv[2], nums)
+if __name__ == "__main__":
+	OUTPUT_DIR = helper.ensureTrailingSlash(sys.argv[3]) + OUTPUT_DIR
+	nums = helper.readNumsOrRangesFromCmdLine(4)
+	nums = list(str(i) for i in nums)
+	checkFiles(sys.argv[1], sys.argv[2], nums)

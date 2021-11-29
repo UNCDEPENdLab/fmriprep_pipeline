@@ -134,4 +134,5 @@ def main():
 		i.failedChecks = sorted(i.failedChecks, key=lambda x: x.task)
 		i.printStatus()
 
-main()
+if __name__ == "__main__":
+	main()
