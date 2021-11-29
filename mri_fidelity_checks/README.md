@@ -2,12 +2,18 @@ This file explains the purpose of the code in this directory, and how it works. 
 
 # How to use
 
+## Installation
+
+```
+python3.* mri_fidelity_checks/setup.py install
+```
+
 ## Run the fidelity checks
 
 Usage:
 
 ```
-python3.* feeder.py <template file> <subject data> <output dir> <range or num> [range or num]...
+python3.* -m mri_fidelity_checks.feeder <template file> <subject data> <output dir> <range or num> [range or num]...
 ```
 
 OR
@@ -26,7 +32,7 @@ Use substatus.py. It will output, for each specified subject, the fidelity check
 Usage:
 
 ```
-python3.* substatus.py <fidelity output> <range or num> [range or num]...
+python3.* -m mri_fidelity_checks.substatus <fidelity output> <range or num> [range or num]...
 ```
 
 * `<fidelity output>` is the directory containing the output of running the fidelity checks
@@ -65,6 +71,19 @@ These terms are used for determining how to process a given file:
 **Collate**: Refers to a 2-tuple of fileAnalysis objects. For any given scan parameters (subject, task, scan type), there should be exactly one json file and exactly one nifti file. A collate contains these two paired files. There are cases when only one of the files exists, but this is handled. This term could be more descriptive.
 
 **empirical/experimental**: The field values coming from the actual files in the BIDS data directory, for lack of a better term, are referred to as "empirical" or "experimental" or "actual". This is opposed to the field values from the master json file specifying the correct/desired values. These are referred to as "template" or "target".
+
+## Using in another Script
+
+``` python
+from mri_fidelity_checks.feeder import checkFiles
+from mri_fidelity_checks.substatus import checkStatus
+
+# 3rd argument can be set to specific subjects, or left empty to process all
+checkfiles(my_validation.json, "my_BIDS_dir", [], outputDir="my_output_dir")
+
+# 2nd argument takes list of specific subjects to check
+checkStatus("my_output_dir", ["000", "001", "002"])
+```
 
 # Contact
 If you have questions that were not answered here or other concerns please contact the developer, Austin Marcus, by email: axm6053@psu.edu
