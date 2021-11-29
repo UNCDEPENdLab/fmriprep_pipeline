@@ -1,2 +1,6 @@
 *.pyc
 *.o[0-9]*
+*.egg-info
+
+mri_fidelity_checks/build
+mri_fidelity_checks/dist

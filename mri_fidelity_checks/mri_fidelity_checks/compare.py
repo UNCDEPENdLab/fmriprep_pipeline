@@ -18,7 +18,7 @@
 import json
 import os
 import sys
-import helper
+from . import helper
 
 TOL = .01
 manual_verify = False

@@ -7,8 +7,8 @@
 import os
 import sys
 from functools import cmp_to_key
-import helper
-import compare
+from . import helper
+from . import compare
 
 OUTPUT_DIR = "fidelity_checks" # will attempt to create this directory within the specified output location
 WRITE_OK = False
@@ -324,8 +324,14 @@ def generateRegexs(sub_id_list):
 #	subIDs is a list of subject ids (in numerical format)
 # OUTPUT:
 #	gets all relevant files of the subjects listed beneath dataDir, compares their fidelity values against templatePath, and outputs the results by writing to a file
-def checkFiles(templatePath, dataDir, subIDs):
+def checkFiles(templatePath, dataDir, subIDs, outputDir=None):
+	global OUTPUT_DIR	
 
+	if outputDir is None:
+		outputDir = OUTPUT_DIR
+	else:
+		OUTPUT_DIR = outputDir	
+	
 	# filter out files we don't need. if not done, may interfere with the sorting process because some files aren't orderable
 	files = []
 	regexs = generateRegexs(subIDs)
@@ -368,7 +374,8 @@ def checkFiles(templatePath, dataDir, subIDs):
 # argv2 = dataDir
 # argv3 = output dir
 # argv4- = subject ids
-OUTPUT_DIR = helper.ensureTrailingSlash(sys.argv[3]) + OUTPUT_DIR
-nums = helper.readNumsOrRangesFromCmdLine(4)
-nums = list(str(i) for i in nums)
-checkFiles(sys.argv[1], sys.argv[2], nums)
+if __name__ == "__main__":
+	OUTPUT_DIR = helper.ensureTrailingSlash(sys.argv[3]) + OUTPUT_DIR
+	nums = helper.readNumsOrRangesFromCmdLine(4)
+	nums = list(str(i) for i in nums)
+	checkFiles(sys.argv[1], sys.argv[2], nums)

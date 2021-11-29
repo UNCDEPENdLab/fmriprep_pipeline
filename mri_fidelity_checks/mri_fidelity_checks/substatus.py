@@ -5,7 +5,7 @@
 # Author: Austin Marcus (axm6053@psu.edu)
 
 from random import choice
-import helper
+from . import helper
 import sys
 
 # core objects
@@ -110,11 +110,7 @@ def extractChecksIntoSubs(filename, subs):
 
 		#line = fd.readline().split(delim)[:-1]
 
-def main():
-	dir_path = sys.argv[1]
-	# read command line input and prep desired subjects
-	nums = helper.readNumsOrRangesFromCmdLine(2)
-
+def checkStatus(dir_path, nums):
 	# prep subjects
 	nums.sort()
 	subs = []
@@ -134,4 +130,9 @@ def main():
 		i.failedChecks = sorted(i.failedChecks, key=lambda x: x.task)
 		i.printStatus()
 
-main()
+if __name__ == "__main__":
+	dir_path = sys.argv[1]
+	# read command line input and prep desired subjects
+	nums = helper.readNumsOrRangesFromCmdLine(2)
+
+	checkStatus(dir_path, nums)
