@@ -7,8 +7,8 @@
 import os
 import sys
 from functools import cmp_to_key
-import helper
-import compare
+from . import helper
+from . import compare
 
 OUTPUT_DIR = "fidelity_checks" # will attempt to create this directory within the specified output location
 WRITE_OK = False

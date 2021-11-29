@@ -5,7 +5,7 @@
 # Author: Austin Marcus (axm6053@psu.edu)
 
 from random import choice
-import helper
+from . import helper
 import sys
 
 # core objects
