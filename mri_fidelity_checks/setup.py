@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 DIST_NAME = 'mri-fidelity-checks'
-AUTHOR = 'Michael Hallquist'
+AUTHOR = 'Austin Marcus'
 VERSION = '1.0'
 DESCRIPTION = 'Used to automate the verification of mri scan data fidelity.'
 URL = 'https://github.com/UNCDEPENdLab/fmriprep_pipeline'
