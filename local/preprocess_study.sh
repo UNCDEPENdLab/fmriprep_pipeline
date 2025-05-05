@@ -3,13 +3,16 @@ set -e
 function printHelp() {
 cat <<EndOfHelp
 -----------------------------------
-preprocess_study.sh is a script that does an incremental pull of raw MRI data (DICOMS) from a remote server, restructures these into BIDS format using heudiconv,
-then queues fmriprep, mriqc, and (local) fidelity checks on the data for each subject.
+preprocess_study.sh is a script that does an incremental pull of raw MRI data (DICOMS) from a remote server, 
+restructures these into BIDS format using heudiconv, then queues fmriprep, mriqc, and (local) fidelity checks
+on the data for each subject.
 
-It requires a single argument, which is a config file containing all environment variables that define key choice points in the pipeline like
-locations of data on the remote and local machines, the location of key programs (e.g., dcm2niix), and so on.
+It requires a single argument, which is a config file containing all environment variables that define key
+choice points in the pipeline like locations of data on the remote and local machines, the location
+of key programs (e.g., dcm2niix), and so on.
 
-Optionally, you can pass a second configuration file that specifies all of the details of the computation environment (e.g., fmriprep virtual environment location).
+Optionally, you can pass a second configuration file that specifies all of the details of the computation 
+environment (e.g., fmriprep virtual environment location).
 If not provided, the script uses environment.cfg in this directory.
 
 Example:

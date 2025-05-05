@@ -2,10 +2,9 @@
 #Default PBS requests if not overridden on qsub command line
 #PBS -l nodes=1:ppn=4
 #PBS -l walltime=24:00:00
-#PBS -A mnh5174_c_g_sc_default
-#PBS -o aci_output
-#PBS -e aci_output
-#PBS -N fmriprep
+#PBS -l mem=48gb
+
+
 
 set -e
 cd $PBS_O_WORKDIR

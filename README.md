@@ -2,7 +2,7 @@
 Processing scripts for fmriprep pipeline on torque cluster
 
 ## Key ingredients:
- - compute_environment.cfg  : All details of the compute environment for running the pipeline (adjust to your environment!)
+ - compute_cfg/compute_environment.cfg  : All details of the compute environment for running the pipeline (adjust to your environment!)
  - study_cfg/               : Config files for each study that can be handled by the pipeline
  - preprocess_study.sh      : Overlord script that transfers data for a study, then pushes new data through BIDS conversion mriqc, fmriprep, and fidelity checks
  - fmriprep_wrapper         : Torque-friendly wrapper for bare-metal virtualenv fmriprep installation. Sets up environment and then calls fmriprep with specified arguments

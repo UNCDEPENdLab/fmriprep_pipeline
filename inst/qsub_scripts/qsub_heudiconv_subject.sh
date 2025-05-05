@@ -31,8 +31,6 @@ source "$env_file" #setup relevant variables for this processing environment
 [ -z "${loc_mrraw_root}" ] && echo "No loc_mrraw_root variable set." && exit 1
 [ -z "${loc_bids_root}" ] && echo "No loc_bids_root variable set." && exit 1
 
-#source /gpfs/group/mnh5174/default/lab_resources/ni_path.bash
-
 ####
 #run heudiconv
 [[ "$debug_pipeline" -eq 1 ]] && rel_suffix=c #if debug_pipeline is 1, only echo command to log, don't run it
