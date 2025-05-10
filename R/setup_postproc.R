@@ -144,7 +144,7 @@ setup_confound_regression <- function(scfg = list()) {
         Columns that will be filtered to match fMRI data: {paste(scfg$postprocess$confound_regression$columns)}
         Columns that will not be filtered: {paste(scfg$postprocess$confound_regression$noproc_columns)}
         File prefix: {scfg$postprocess$confound_regression$prefix}
-    "), width = 80, extent = 4), sep = "\n")
+    "), width = 80, exdent = 4), sep = "\n")
 
     change <- prompt_input("Change settings?", type = "flag")
     if (!change) return(scfg) # skip out
@@ -193,7 +193,7 @@ setup_confound_calculate <- function(scfg = list()) {
         Columns that will not be filtered: {paste(scfg$postprocess$confound_calculate$noproc_columns)}
         Demean confounds: {paste(scfg$postprocess$confound_calculate$demean)}
         Confound file name: {scfg$postprocess$confound_calculate$output_file}
-    "), width = 80, extent = 4), sep = "\n")
+    "), width = 80, exdent = 4), sep = "\n")
 
     change <- prompt_input("Change settings?", type = "flag")
     if (!change) return(scfg) # skip out

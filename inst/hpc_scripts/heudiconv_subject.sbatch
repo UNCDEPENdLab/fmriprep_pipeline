@@ -47,8 +47,13 @@ source "${pipedir}/pipeline_functions"
 # rel "${heudiconv_location} -d ${loc_dicom_root}/{subject}/*/*.dcm -s $sub -f ${heudiconv_heuristic} -c dcm2niix -o ${loc_bids_root} -b && date \"+%m%d%y@%H:%M\" > ${loc_bids_root}/sub-${sub}/.heudiconv.complete" $rel_suffix
 # rel "${pipedir}/add_intendedfor_bold ${loc_bids_root}/sub-${sub}" $rel_suffix #add IntendedFor field to FMAP jsons, pointing to all BOLD
 
-singularity_cmd="singularity run --cleanenv -B $loc_bids_root:/data $heudiconv_container
+singularity_cmd="singularity run --cleanenv -B $loc_bids_root -B $loc_dicom_root $heudiconv_container
 
 rel $rel_flag ${singularity_cmd} -d ${loc_dicom_root}/{subject}/*/*.dcm -s $sub \
   -f $heudiconv_heuristic -c dcm2niix \
   -o ${loc_bids_root} -b && date '+%m%d%y@%H:%M' > ${loc_bids_root}/sub-${sub}/.heudiconv.complete"
+
+#singularity run --cleanenv -B /proj/mnhallqlab/projects/preproc_pipeline_test_data/dicoms \
+#  -B /proj/mnhallqlab/projects/preproc_pipeline_test_data/processed \
+#  /proj/mnhallqlab/users/michael/fmriprep_pipeline_setup/heudiconv_latest.sif \
+#  --files dicoms/540294 -f heuristic.py -s 540294 -c dcm2niix --bids

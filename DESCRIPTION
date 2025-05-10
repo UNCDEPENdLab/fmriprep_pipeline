@@ -1,11 +1,22 @@
 Package: BGprocess
-Title: What the Package Does (One Line, Title Case)
-Version: 0.0.0.9000
+Title: R package for preprocessing fMRI data
+Version: 0.1
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+    person("Michael", "Hallquist", , "michael.hallquist@gmail.c", role = c("aut", "cre"))
+Description: This R package handles preprocessing of fMRI data on HPC clusters. It is
+    an interim product that will be integrated with fmri.pipeline, the analysis package, which
+    will then be renamed BrainGnomes.
+License: GPL-3
+LazyData: yes
+LazyLoad: yes
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
+Imports:
+    checkmate,
+    data.table,
+    dplyr,
+    glue,
+    lubridate,
+    magrittr,
+    yaml

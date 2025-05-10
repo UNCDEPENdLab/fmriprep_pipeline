@@ -221,16 +221,36 @@ get_subject_logger <- function(scfg, sub_dir) {
 }
 
 #' Obtain user input from the console
-#' @param prompt The character string to place in front of the user input prompt. For example, "> "
+#' @param prompt The character string to place on the line preceding the user input prompt. For example, "Enter location"
+#' @param prompt_eol The character string to place at the end of the prompt line. For example, ">"
 #' @param instruct The instructions to display above the prompt.
 #' @param lower For numeric inputs, the lowest valid value
 #' @param upper For numeric inputs, the highest valid value
+#' @param len The number of expected values to be returned. If NULL, the user can enter any number of values.
+#' @param min.len The minimum number of values to be returned. If NULL, the user can enter any number of values.
+#' @param max.len The maximum number of values to be returned. If NULL, the user can enter any number of values.
+#' @param split The character(s) to split the input string into multiple values. Only relevant if len > 1.
+#' @param among A vector of valid values for the input. If NULL, any value is accepted.
+#' @param required If TRUE, the user must provide a value. If FALSE, the user can skip the input by pressing Enter.
+#' @param uniq If TRUE, all entries must be unique.
+#' @return The user input, converted to the appropriate type (numeric, integer, or character).
+#' @details The function will keep prompting the user until valid input is provided. It will also display
+#'   instructions and feedback about the expected input format.
+#' @note This function is intended for interactive use and may not work as expected in non-interactive
+#'   environments (e.g., R scripts run in batch mode).
+#' @importFrom glue glue
 #' @importFrom checkmate test_string assert_string assert_subset assert_number
 #' @keywords internal
-prompt_input <- function(prompt = "", instruct = NULL, type = "character", lower = -Inf, upper = Inf, 
-  len = NULL, min.len=NULL, max.len=NULL, split = NULL, among = NULL, required = TRUE, uniq=FALSE) {
+prompt_input <- function(prompt = "", prompt_eol=">", instruct = NULL, type = "character", lower = -Inf, upper = Inf, 
+  len = NULL, min.len=NULL, max.len=NULL, split = NULL, among = NULL, required = TRUE, uniq=FALSE, default = NULL) {
 
-  checkmate::assert_string(prompt, null.ok = TRUE)
+  if (!interactive()) stop("prompt_input() requires an interactive session.")
+
+  if (is.null(prompt)) prompt_eol <- ""
+  if (is.null(prompt_eol)) prompt_eol <- ""
+
+  checkmate::assert_string(prompt)
+  checkmate::assert_string(prompt_eol)
   checkmate::assert_string(instruct, null.ok = TRUE)
   checkmate::assert_subset(type, c("numeric", "integer", "character", "file", "flag"))
   checkmate::assert_number(lower)
@@ -285,12 +305,29 @@ prompt_input <- function(prompt = "", instruct = NULL, type = "character", lower
   if (type == "flag") {
     # always ask user for yes/no input
     prompt <- paste(prompt, ifelse(required, "(yes/no)", "(yes/no; press Enter to skip)"))
+  } else if (!is.null(default)) {
+    prompt <- glue::glue("{prompt} (Press enter to accept default: {default})") # let user know how to skip optional input
   } else if (!required) {
     prompt <- paste(prompt, "(Press enter to skip)") # let user know how to skip optional input
   }
 
   # always add trailing space to make prompt clear
-  if (substr(prompt, nchar(prompt), nchar(prompt)) != " ") prompt <- paste0(prompt, " ")
+  if (!grepl("\\s$", prompt)) prompt <- paste0(prompt, " ")
+  if (!grepl("\\s$", prompt_eol)) prompt_eol <- paste0(prompt_eol, " ") # also ensure that prompt_eol has trailing space
+  prompt <- paste0(prompt, prompt_eol)
+  
+  # Validate default value
+  if (!is.null(default)) {
+    valid_default <- switch(type,
+      "integer" = checkmate::test_integerish(default, lower = lower, upper = upper, len = len, min.len = min.len, max.len = max.len),
+      "numeric" = checkmate::test_numeric(default, lower = lower, upper = upper, len = len, min.len = min.len, max.len = max.len),
+      "character" = checkmate::test_character(default, len = len, min.len = min.len, max.len = max.len),
+      "flag" = is.logical(default) && length(default) == 1,
+      "file" = all(sapply(default, checkmate::test_file_exists)),
+      FALSE
+    )
+    if (!valid_default) stop("Default value does not meet the input requirements.")
+  }
 
   # print instructions
   if (checkmate::test_string(instruct)) cat(instruct, "\n")
@@ -301,8 +338,10 @@ prompt_input <- function(prompt = "", instruct = NULL, type = "character", lower
     r <- readline(prompt)
     if (!is.null(split)) r <- strsplit(r, split, perl = TRUE)[[1]]
 
-    if (isFALSE(required) && r[1L] == "") {
-      return(NA) # empty input
+    if (!is.null(default) && r[1L] == "") {
+      return(default)
+    } else if (isFALSE(required) && r[1L] == "") {
+      return(NA) # empty input and not required
     } else if (isTRUE(uniq) && length(unique(r)) != length(r)) {
       cat("All entries must be unique.\n")
     } else if (type == "flag") {
@@ -310,7 +349,7 @@ prompt_input <- function(prompt = "", instruct = NULL, type = "character", lower
       if (!r[1L] %in% c("yes", "no", "y", "n")) {
         cat("Please respond yes or no.\n")
       } else {
-        res <- ifelse(substr(r[1L], 1, 1) == "y", TRUE, FALSE)
+        res <- substr(r[1L], 1, 1) == "y" # TRUE if yes, FALSE if no
       }
     } else if (type == "integer") {
       r <- type.convert(r, as.is = TRUE) # convert to apparent atomic type for validation

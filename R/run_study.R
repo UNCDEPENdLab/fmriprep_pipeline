@@ -12,8 +12,8 @@ run_study <- function(scfg, prompt = TRUE, force = FALSE) {
 
   if (isFALSE(prompt)) {
     steps <- c(
-      bids_convert = ifelse(is.null(scfg$heudiconv_container), FALSE, TRUE),
-      bids_validate = ifelse(is.null(scfg$bidsvalidator_container), FALSE, TRUE),
+      bids_conversion = ifelse(is.null(scfg$heudiconv_container), FALSE, TRUE),
+      bids_validation = ifelse(is.null(scfg$bidsvalidator_container), FALSE, TRUE),
       mriqc = ifelse(is.null(scfg$mriqc_container), FALSE, TRUE),
       fmriprep = ifelse(is.null(scfg$fmriprep_container), FALSE, TRUE),
       aroma = ifelse(is.null(scfg$aroma_container), FALSE, TRUE),
@@ -36,8 +36,8 @@ run_study <- function(scfg, prompt = TRUE, force = FALSE) {
       )
     }
     steps <- c(
-        bids_convert = run_bids_conversion,
-        bids_validate = run_bids_validation,
+        bids_conversion = run_bids_conversion,
+        bids_validation = run_bids_validation,
         mriqc = run_mriqc,
         fmriprep = run_fmriprep,
         aroma = run_aroma,
