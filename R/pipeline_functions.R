@@ -185,7 +185,7 @@ setup_job <- function(scfg, job_name = NULL, prompt_all = FALSE, defaults = NULL
   }
 
   if (prompt_all || is.null(scfg[[job_name]]$sched_args)) {
-    sched_queue <- ifelse(!is.null(scfg$scheduler) && scfg$scheduler == "torque", "#PBS", "#SBATCH")
+    sched_queue <- ifelse(!is.null(scfg$compute_environment$scheduler) && scfg$compute_environment$scheduler == "torque", "#PBS", "#SBATCH")
     scfg[[job_name]]$sched_args <- build_cli_args(args = scfg[[job_name]]$sched_args, instruct = glue("Specify any other arguments to pass to the job scheduler These usually begin {sched_queue}. Press Enter when done."))
   }
 
@@ -518,66 +518,6 @@ build_cli_args <- function(args=NULL, prompt="> ", instruct = "Enter arguments (
     return(args)
   }
 }
-
-
-
-
-# build_cli_args <- function(initial_args = character()) {
-#   args <- initial_args
-
-#   repeat {
-#     cat("\nCurrent arguments:\n")
-#     if (length(args) == 0) {
-#       cat("  [None yet]\n")
-#     } else {
-#       for (i in seq_along(args)) {
-#         cat(sprintf("  [%d] %s\n", i, args[i]))
-#       }
-#     }
-
-#     cat("\nChoose an option:\n")
-#     cat("  1: Add argument\n")
-#     cat("  2: Edit argument\n")
-#     cat("  3: Delete argument\n")
-#     cat("  4: Finish and return\n")
-
-#     choice <- readline("Enter your choice [1-4]: ")
-
-#     if (choice == "1") {
-#       new_arg <- readline("Enter new argument (e.g., --input data.txt): ")
-#       if (nzchar(new_arg)) args <- c(args, new_arg)
-
-#     } else if (choice == "2") {
-#       idx <- as.integer(readline("Enter argument number to edit: "))
-#       if (!is.na(idx) && idx >= 1 && idx <= length(args)) {
-#         new_value <- readline(sprintf("Enter new value for [%s]: ", args[idx]))
-#         if (nzchar(new_value)) args[idx] <- new_value
-#       } else {
-#         cat("Invalid index.\n")
-#       }
-
-#     } else if (choice == "3") {
-#       idx <- as.integer(readline("Enter argument number to delete: "))
-#       if (!is.na(idx) && idx >= 1 && idx <= length(args)) {
-#         args <- args[-idx]
-#       } else {
-#         cat("Invalid index.\n")
-#       }
-
-#     } else if (choice == "4") {
-#       break
-
-#     } else {
-#       cat("Invalid choice. Please enter 1, 2, 3, or 4.\n")
-#     }
-#   }
-
-#   cat("\nFinal argument string:\n")
-#   cat(paste(args, collapse = " "), "\n")
-#   return(args)
-# }
-###
-
 
 # Load required libraries
 library(glue)

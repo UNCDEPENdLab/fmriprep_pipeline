@@ -4,7 +4,7 @@
 \alias{validate_scfg}
 \title{validate the structure of a study configuration object}
 \usage{
-validate_scfg(scfg = list())
+validate_scfg(scfg = list(), quiet = FALSE)
 }
 \arguments{
 \item{scfg}{a study configuration file as produced by \code{load_study} or \code{setup_study}}

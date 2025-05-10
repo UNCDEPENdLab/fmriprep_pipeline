@@ -6,19 +6,15 @@ setup_postprocessing <- function(scfg = list()) {
   }
 
   defaults <- list(
-    memgb = "50g",
-    walltime = "24:00:00",
-    ncores = "12",
+    memgb = 50,
+    nhours = 2,
+    ncores = 1L,
     cli_options = "",
+    sched_args = ""
   )
 
-  # need a way to only bother the user when something is missing.
-  # maybe a "prompt_on_null" option to prompt input, with a current value?
-  print(defaults)
-  accept_defaults <- prompt_input("These be the defaults. Ye want?", type = "flag")
-  if (accept_defaults) {
-    scfg$postprocess <- populate_defaults(scfg$postprocess, defaults)
-  }
+  cat("This step sets up postprocessing.\n")
+  scfg <- setup_job(scfg, "postprocess", defaults = defaults)
 
   # global settings
   scfg$postprocess$keep_intermediates <- prompt_input("Do you want to keep postprocess intermediate files? This is typically only for debugging.", type = "flag")
@@ -63,8 +59,9 @@ setup_postprocessing <- function(scfg = list()) {
     type = "file", len = 1L, required=FALSE
   )
 
-  scfg <- setup_temporal_filter(scfg)
   scfg <- setup_spatial_smooth(scfg)
+  scfg <- setup_apply_aroma(scfg)
+  scfg <- setup_temporal_filter(scfg)
   scfg <- setup_intensity_normalization(scfg)
   scfg <- setup_confound_calculate(scfg)
   scfg <- setup_confound_regression(scfg)
@@ -73,12 +70,12 @@ setup_postprocessing <- function(scfg = list()) {
 }
 
 setup_postproc_steps <- function(scfg = list()) {
-  if (is.null(scfg$postprocess$processing_steps)) {
-    stop("missing processing_steps. Rung out of order?")
-  }
+  # if (is.null(scfg$postprocess$processing_steps)) {
+  #   stop("missing processing_steps. Run out of order?")
+  # }
 
   # arrange them in a desirable order
-  processing_steps <- c()
+  processing_sequence <- c()
   if ("apply_mask" %in% scfg$postprocess$processing_steps) processing_sequence <- c(processing_sequence, "apply_mask")
   if ("spatial_smooth" %in% scfg$postprocess$processing_steps) processing_sequence <- c(processing_sequence, "spatial_smooth")
   if ("apply_aroma" %in% scfg$postprocess$processing_steps) processing_sequence <- c(processing_sequence, "apply_aroma")
@@ -173,9 +170,12 @@ setup_confound_regression <- function(scfg = list()) {
     scfg$postprocess$processing_steps <- scfg$postprocess$processing_steps[scfg$postprocess$processing_steps != "confound_regression"]
   }
 
-  scfg$postprocess$confound_regression$columns <- prompt_input("Confounds that will be filtered: ", type = "character", split = "\\s+")
-  scfg$postprocess$confound_regression$noproc_columns <- prompt_input("Confounds that will not be filtered: ", type = "character", split = "\\s+")
-  scfg$postprocess$confound_regression$prefix <- prompt_input("File prefix: ", type = "character")
+  # only ask for details if they want the step
+  if (apply_step) {
+    scfg$postprocess$confound_regression$columns <- prompt_input("Confounds that will be filtered: ", type = "character", split = "\\s+")
+    scfg$postprocess$confound_regression$noproc_columns <- prompt_input("Confounds that will not be filtered: ", type = "character", split = "\\s+", required=FALSE)
+    scfg$postprocess$confound_regression$prefix <- prompt_input("File prefix: ", type = "character")
+  }
   return(scfg)
 }
 
@@ -224,7 +224,7 @@ setup_confound_calculate <- function(scfg = list()) {
   }
 
   scfg$postprocess$confound_calculate$columns <- prompt_input("Confounds that will be filtered: ", type = "character", split="\\s+")
-  scfg$postprocess$confound_calculate$noproc_columns <- prompt_input("Confounds that will not be filtered: ", type = "character", split = "\\s+")
+  scfg$postprocess$confound_calculate$noproc_columns <- prompt_input("Confounds that will not be filtered: ", type = "character", split = "\\s+", required=FALSE)
   scfg$postprocess$confound_calculate$demean <- prompt_input("Demean (filtered) regressors?", type = "flag")
   scfg$postprocess$confound_calculate$output_file <- prompt_input("Confound file name: ", type = "character")
   return(scfg)
@@ -322,3 +322,55 @@ setup_temporal_filter <- function(scfg = list()) {
   scfg$postprocess$temporal_filter$prefix <- prompt_input("File prefix: ", type = "character")
   return(scfg)
 }
+
+#' Specify the intensity normalization settings for postprocessing
+#' @param scfg a study configuration object created by `setup_study`
+#' @return a modified version of `scfg` with the `$postprocess$` field populated
+#' @keywords internal
+setup_apply_aroma <- function(scfg = list()) {
+  cur_val <- "apply_aroma" %in% scfg$postprocess$processing_steps
+  if ("apply_aroma" %in% names(scfg)) {
+    cat(glue("
+      Current AROMA removal settings:
+        Apply AROMA denoising: {cur_val}
+        Use nonaggressive denoising: {scfg$postprocess$apply_aroma$nonaggressive}
+        File prefix: {scfg$postprocess$apply_aroma$prefix}
+    "))
+
+    change <- prompt_input("Change settings?", type="flag")
+    if (!change) return(scfg) # skip out
+  }
+
+  cat(glue("
+    As part of the fMRI processing pipeline, ICA-AROMA can be run for your data. This will compute a spatiotemporal
+    decomposition of the data for each run, then figure out which spatiotemporal components likely correspond to
+    motion-related artifacts. This is accomplished by the fmripost-aroma workflow (https://github.com/nipreps/fmripost-aroma).
+    The result is that you will have a derivatives containing the ICA components x time matrix and a tsv file of
+    potential regressors that can be used in denoising. This may look something like:
+
+    sub-<label>/
+      func/
+        sub-<label>_space-MNI152NLin6Asym_res-2_desc-melodic_mixing.tsv
+        sub-<label>_[specifiers]_desc-aroma_timeseries.tsv
+
+    Here, in postprocessing, you can choose to now *apply* these noise regressors to the fMRI data in order to remove
+    these sources of noise from the BOLD data. If you choose to apply AROMA denoising, the motion-related components
+    will be removed using 'aggressive' or 'nonaggressive' regression. Pruim et al. 2015 recommend 'nonaggressive', which
+    in simple terms only removes the unique variance in (bad) noise components not shared with (good) signal components.
+    'Aggressive' denoising, on the other hand, simply uses voxelwise multiple regression with all noise components
+    as regressors, such that any variance in noise components is removed from the data. We agree that 'nonaggressive' is
+    the best default for this procedure.
+  ", .trim=FALSE))
+
+  apply_step <- prompt_input("Apply AROMA denoising?", type="flag")
+  if (apply_step && !cur_val) {
+    scfg$postprocess$processing_steps <- c(scfg$postprocess$processing_steps, "apply_aroma")
+  } else if (!apply_step && cur_val) {
+    scfg$postprocess$processing_steps <- scfg$postprocess$processing_steps[scfg$postprocess$processing_steps != "apply_aroma"]
+  }
+
+  scfg$postprocess$apply_aroma$nonaggressive <- prompt_input("Use nonaggressive denoising? (Recommended: yes) ", type="flag")
+  scfg$postprocess$apply_aroma$prefix <- prompt_input("File prefix: ", type = "character")
+  return(scfg)
+}
+

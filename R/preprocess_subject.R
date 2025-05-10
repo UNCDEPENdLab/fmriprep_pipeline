@@ -58,8 +58,8 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
 
   lg <- get_subject_logger(sub_dir)
 
-  if (!validate_exists(scfg$compute_enviroment$fmriprep_container)) {
-    lg$debug("Unable to submit fmriprep for {sub_dir} because $compute_enviroment$fmriprep_container is missing.")
+  if (!validate_exists(scfg$compute_environment$fmriprep_container)) {
+    lg$debug("Unable to submit fmriprep for {sub_dir} because $compute_environment$fmriprep_container is missing.")
     return(NULL)
   }
 
@@ -67,7 +67,7 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
   sched_args <- get_job_sched_args(scfg, "fmriprep")
 
   env_variables <- c(
-    fmriprep_container = scfg$compute_enviroment$fmriprep_container,
+    fmriprep_container = scfg$compute_environment$fmriprep_container,
     sub = subid, # TODO: strip from sub folder name?
     loc_bids_root = scfg$bids_directory,
     loc_mrproc_root = scfg$fmriprep_directory,
@@ -76,7 +76,7 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
   )
 
   job_id <- cluster_job_submit(script,
-    scheduler = scfg$scheduler,
+    scheduler = scfg$compute_environment$scheduler,
     sched_args = sched_args, env_variables = env_variables,
     wait_jobs = parent_ids
   )
@@ -94,7 +94,7 @@ submit_bids_conversion <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
   script <- get_job_script(scfg, "heudiconv")
   sched_args <- get_job_sched_args(scfg, "heudiconv")
   env_variables <- c(
-    heudiconv_container = scfg$compute_enviroment$heudiconv_container,
+    heudiconv_container = scfg$compute_environment$heudiconv_container,
     loc_dicom_root = scfg$dicom_directory,
     loc_bids_root = scfg$bids_directory,
     heudiconv_heuristic = scfg$heudiconv$heuristic_file,
@@ -103,7 +103,7 @@ submit_bids_conversion <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
   )
 
   job_id <- cluster_job_submit(script,
-    scheduler = scfg$scheduler,
+    scheduler = scfg$compute_environment$scheduler,
     sched_args = sched_args, env_variables = env_variables,
     wait_jobs = parent_ids
   )
@@ -118,7 +118,7 @@ submit_postprocess <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
   script <- get_job_script(scfg, "postprocess")
   sched_args <- get_job_sched_args(scfg, "postprocess")
   env_variables <- c(
-    heudiconv_container = scfg$compute_enviroment$heudiconv_container,
+    heudiconv_container = scfg$compute_environment$heudiconv_container,
     loc_dicom_root = scfg$dicom_directory,
     loc_bids_root = scfg$bids_directory,
     heudiconv_heuristic = scfg$heudiconv$heuristic_file,
@@ -127,7 +127,7 @@ submit_postprocess <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
   )
 
   job_id <- cluster_job_submit(script,
-    scheduler = scfg$scheduler,
+    scheduler = scfg$compute_environment$scheduler,
     sched_args = sched_args, env_variables = env_variables,
     wait_jobs = parent_ids
   )
@@ -138,7 +138,7 @@ submit_postprocess <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
 
 get_job_script <- function(scfg = NULL, job_name) {
   checkmate::assert_string(job_name)
-  ext <- ifelse(scfg$scheduler == "torque", "pbs", "sbatch")
+  ext <- ifelse(scfg$compute_environment$scheduler == "torque", "pbs", "sbatch")
   script <- system.file(glue("{job_name}_subject.{ext}"), package = "BrainGnomes")
   if (!checkmate::test_file_exists(script)) {
     stop("In get_job_script, cannot find expected script file: ", script)
@@ -149,7 +149,7 @@ get_job_script <- function(scfg = NULL, job_name) {
 get_job_sched_args <- function(scfg=NULL, job_name) {
   checkmate::assert_string(job_name)
 
-   if (scfg$scheduler == "slurm") {
+   if (scfg$compute_environment$scheduler == "slurm") {
      sched_args <- glue(
        "-N 1",
        "-n {scfg[[job_name]]$ncpus}",
@@ -177,8 +177,8 @@ submit_aroma <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
     # logging needed
     # DEBUGmessage(glue("Skipping AROMA in {sub_dir} because run_aroma is FALSE in config")
     return(NULL)
-  } else if (!validate_exists(scfg$compute_enviroment$aroma_container)) {
-    # WARNINGmessage(glue("Skipping AROMA in {sub_dir} because could not find AROMA container {scfg$compute_enviroment$aroma_container}")
+  } else if (!validate_exists(scfg$compute_environment$aroma_container)) {
+    # WARNINGmessage(glue("Skipping AROMA in {sub_dir} because could not find AROMA container {scfg$compute_environment$aroma_container}")
     return(NULL)
   }
 

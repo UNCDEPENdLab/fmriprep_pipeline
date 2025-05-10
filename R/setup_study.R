@@ -1,13 +1,230 @@
+# little helper function to allow a nested list to be traversed using key syntax
+# of the form parent/child/grandchild where this corresponds to my_list$parent$child$granchild
+get_nested_values <- function(lst, key_strings, sep = "/", simplify = TRUE) {
+  split_keys_list <- strsplit(key_strings, sep)
+  
+  ret <- sapply(seq_along(split_keys_list), function(i) {
+    keys <- split_keys_list[[i]]
+    val <- lst
+    
+    for (j in seq_along(keys)) {
+      key <- keys[[j]]
+      
+      if (j == length(keys) && is.atomic(val) && !is.null(names(val))) {
+        # If last key and val is a named vector
+        return(val[[key]])
+      } else if (!is.list(val) || is.null(val[[key]])) {
+        # Otherwise, standard list traversal
+        return(NULL)
+      }
+      val <- val[[key]]
+    }
+    return(val)
+  }, USE.NAMES = FALSE, simplify = simplify)
+  names(ret) <- key_strings
+  return(ret)
+}
+
 #' validate the structure of a study configuration object
 #' @param scfg a study configuration file as produced by `load_study` or `setup_study`
+#' @importFrom checkmate assert_flag test_class test_directory_exists test_file_exists
 #' @keywords internal
-validate_scfg <- function(scfg = list()) {
+validate_scfg <- function(scfg = list(), quiet = FALSE) {
   if (!checkmate::test_class(scfg, "bg_study_cfg")) {
-    class(scfg) <- c(class(scfg), "bg_study_cfg")
+    if (inherits(scfg, "list")) {
+      class(scfg) <- c(class(scfg), "bg_study_cfg")
+    } else {
+      stop("scfg must be a list of bg_study_cfg object")
+    }
   }
 
+  checkmate::assert_flag(quiet)
 
+  gaps <- c()
 
+  if (is.null(scfg$project_name)) {
+    if (!quiet) message("Config file is missing project_name. You will be asked for this.")
+    gaps <- c(gaps, "project_name")
+  }
+
+  required_dirs <- c("project_directory", "dicom_directory", "bids_directory", "fmriprep_directory", "scratch_directory")
+  for (rr in required_dirs) {
+    if (!checkmate::test_directory_exists(scfg[[rr]])) {
+      message("Config file is missing valid ", rr, ". You will be asked for this.")
+      gaps <- c(gaps, rr)
+    }
+  }
+
+  required_files <- c("compute_environment/fmriprep_container", "compute_environment/heudiconv_container", "heudiconv/heuristic_file")
+  for (rr in required_files) {
+    if (!checkmate::test_file_exists(get_nested_values(scfg, rr))) {
+      message("Config file is missing valid ", rr, ". You will be asked for this.")
+      gaps <- c(gaps, rr)
+    }
+  }
+
+  # optional files
+  if (!is.null(scfg$compute_environment$bids_validator) && !checkmate::test_file_exists(scfg$compute_environment$bids_validator)) {
+    message("Cannot find bids_validator at ", scfg$compute_environment$bids_validator, ". You will be asked for this.")
+    gaps <- c(gaps, "compute_environment/bids_validator")
+    scfg$compute_environment$bids_validator <- NULL
+  }
+
+  if (!is.null(scfg$compute_environment$mriqc_container) && !checkmate::test_file_exists(scfg$compute_environment$mriqc_container)) {
+    message("Cannot find MRIQC container at ", scfg$compute_environment$mriqc_container, ". You will be asked for this.")
+    gaps <- c(gaps, "compute_environment/mriqc_container")
+    scfg$compute_environment$mriqc_container <- NULL
+  }
+
+  if (!is.null(scfg$compute_environment$aroma_container) && !checkmate::test_file_exists(scfg$compute_environment$aroma_container)) {
+    message("Cannot find AROMA container at ", scfg$compute_environment$aroma_container, ". You will be asked for this.")
+    gaps <- c(gaps, "compute_environment/aroma_container")
+    scfg$compute_environment$aroma_container <- NULL
+  }
+
+  # helper subfunction to convert NULL, empty list, or "" to character(0) for conformity
+  validate_char <- function(arg) {
+    if (is.null(arg) || identical(arg, list()) || length(arg) == 0L || arg[1L] == "") {
+      arg <- character(0)
+    }
+    return(arg)
+  }
+
+  # check memgb, nhours, ncores, cli_options, and sched_args for all jobs
+  validate_job_settings <- function(job_name) {
+    if (!checkmate::test_number(scfg[[job_name]]$memgb, lower=1, upper=1000)) {
+      message("Invalid memgb setting in ", job_name, ". We will ask you for a valid value")
+      gaps <- c(gaps, paste(job_name, "memgb", sep="/"))
+      scfg[[job_name]]$memgb <- NULL
+    }
+
+    if (!checkmate::test_number(scfg[[job_name]]$nhours, lower=1, upper=1000)) {
+      message("Invalid nhours setting in ", job_name, ". We will ask you for a valid value")
+      gaps <- c(gaps, paste(job_name, "nhours", sep="/"))
+      scfg[[job_name]]$nhours <- NULL
+    }
+
+    if (!checkmate::test_number(scfg[[job_name]]$ncores, lower = 1, upper = 250)) {
+      message("Invalid ncores setting in ", job_name, ". We will ask you for a valid value")
+      gaps <- c(gaps, paste(job_name, "ncores", sep = "/"))
+      scfg[[job_name]]$ncores <- NULL
+    }
+    
+    # conform cli_options to character(0) on empty
+    scfg[[job_name]]$cli_options <- validate_char(scfg[[job_name]]$cli_options)
+    scfg[[job_name]]$sched_args <- validate_char(scfg[[job_name]]$sched_args)
+    
+  }
+
+  # validate job settings
+  for (job in c("heudiconv", "fmriprep", "mriqc", "aroma", "postprocess")) {
+    validate_job_settings(job)
+  }
+
+  # Postprocessing settings validation
+  # Validate temporal filtering
+  if ("temporal_filter" %in% names(scfg$postprocess)) {
+    if (!checkmate::test_number(scfg$postprocess$temporal_filter$low_pass_hz, lower=0)) {
+      message("Missing low_pass_hz in $postprocess. You will be asked for this.")
+      gaps <- c(gaps, "postprocess/temporal_filter/low_pass_hz")
+      scfg$postprocess$temporal_filter$low_pass_hz <- NULL
+    }
+
+    if (!checkmate::test_number(scfg$postprocess$temporal_filter$high_pass_hz, lower = 0)) {
+      message("Missing high_pass_hz in $postprocess. You will be asked for this.")
+      gaps <- c(gaps, "postprocess/temporal_filter/high_pass_hz")
+      scfg$postprocess$temporal_filter$high_pass_hz <- NULL
+    }
+
+    if (!is.null(scfg$postprocess$temporal_filter$low_pass_hz) && !is.null(scfg$postprocess$temporal_filter$high_pass_hz) && 
+    scfg$postprocess$temporal_filter$high_pass_hz < scfg$postprocess$temporal_filter$low_pass_hz) {
+      message("high_pass_hz is greter than low_pass_hz $postprocess$temporal_filter. You will be asked to respecify valid values.")
+      if (!"postprocess/temporal_filter/low_pass_hz" %in% gaps) gaps <- c(gaps, "postprocess/temporal_filter/low_pass_hz")
+      if (!"postprocess/temporal_filter/high_pass_hz" %in% gaps) gaps <- c(gaps, "postprocess/temporal_filter/high_pass_hz")
+      scfg$postprocess$temporal_filter$low_pass_hz <- NULL
+      scfg$postprocess$temporal_filter$high_pass_hz <- NULL
+    }
+
+    if (!checkmate::test_string(scfg$postprocess$temporal_filter$prefix)) {
+      message("No valid prefix found for $postprocess$temporal_filter")
+      gaps <- c(gaps, "postprocess/temporal_filter/prefix")
+      scfg$postprocess$temporal_filter$prefix <- NULL
+    }
+  }
+
+  # Validate spatial smoothing
+  if ("spatial_smooth" %in% names(scfg$postprocess)) {
+    if (!checkmate::test_number(scfg$postprocess$spatial_smooth$fwhm_mm, lower = 0.1)) {
+      if (!quiet) message("Missing fwhm_mm in $postprocess$spatial_smooth. You will be asked for this.")
+      gaps <- c(gaps, "postprocess/spatial_smooth/fwhm_mm")
+      scfg$postprocess$spatial_smooth$fwhm_mm <- NULL
+    }
+    
+    if (!checkmate::test_string(scfg$postprocess$spatial_smooth$prefix)) {
+      message("No valid prefix found for $postprocess$spatial_smooth")
+      gaps <- c(gaps, "postprocess/spatial_smooth/prefix")
+      scfg$postprocess$spatial_smooth$prefix <- NULL
+    }
+  }
+
+  if ("intensity_normalize" %in% names(scfg$postprocess)) {
+    if (!checkmate::test_number(scfg$postprocess$intensity_normalize$global_median, lower = 0.1)) {
+      if (!quiet) message("Invalid global_median in $postprocess$intensity_normalize. You will be asked for this.")
+      gaps <- c(gaps, "postprocess/intensity_normalize/global_median")
+      scfg$postprocess$intensity_normalize$global_median <- NULL
+    }
+    
+    if (!checkmate::test_string(scfg$postprocess$intensity_normalize$prefix)) {
+      message("No valid prefix found for $postprocess$intensity_normalize")
+      gaps <- c(gaps, "postprocess/intensity_normalize/prefix")
+      scfg$postprocess$intensity_normalize$prefix <- NULL
+    }
+  }
+
+  if ("confound_calculate" %in% names(scfg$postprocess)) {
+    if (!checkmate::test_flag(scfg$postprocess$confound_calculate$demean)) {
+      if (!quiet) message("Invalid demean field in $postprocess$confound_calculate. You will be asked for this.")
+      gaps <- c(gaps, "postprocess/confound_calculate/demean")
+      scfg$postprocess$confound_calculate$demean <- NULL
+    }
+
+    if (!checkmate::test_string(scfg$postprocess$confound_calculate$output_file)) {
+      message("Invalid output_file field in $postprocess$confound_calculate")
+      gaps <- c(gaps, "postprocess/confound_calculate/output_file")
+      scfg$postprocess$confound_calculate$output_file <- NULL
+    }
+
+    if (!checkmate::test_character(scfg$postprocess$confound_calculate$columns)) {
+      message("Invalid columns field in $postprocess$confound_calculate")
+      gaps <- c(gaps, "postprocess/confound_calculate/columns")
+      scfg$postprocess$confound_calculate$columns <- NULL
+    }
+
+    if (!checkmate::test_character(scfg$postprocess$confound_calculate$noproc_columns)) {
+      message("Invalid noproc_columns field in $postprocess$confound_calculate")
+      gaps <- c(gaps, "postprocess/confound_calculate/noproc_columns")
+      scfg$postprocess$confound_calculate$noproc_columns <- NULL
+    }
+  }
+
+  # Validate AROMA settings
+  if ("apply_aroma" %in% names(scfg$postprocess)) {
+    if (!checkmate::test_flag(scfg$postprocess$apply_aroma$nonaggressive)) {
+      if (!quiet) message("Invalid nonaggressive field in $postprocess$apply_aroma You will be asked for this.")
+      gaps <- c(gaps, "postprocess/confound_calculate/demean")
+      scfg$postprocess$apply_aroma$nonaggressive <- NULL
+    }
+
+    if (!checkmate::test_string(scfg$postprocess$apply_aroma$prefix)) {
+      message("No valid prefix found for $postprocess$apply_aroma")
+      gaps <- c(gaps, "postprocess/apply_aroma/prefix")
+      scfg$postprocess$apply_aroma$prefix <- NULL
+    }
+  }
+
+  attr(scfg, "gaps") <- gaps
+
+  return(scfg)
 }
 
 #' Load a study configuration from a file
@@ -36,9 +253,13 @@ summary.bg_study_cfg <- function(x) {
 #' @export
 setup_study <- function(file = NULL) {
   if (test_file_exists(file)) {
-    scfg <- read_yaml(file)
+    scfg <- read_yaml(file) # should validate... but should setup actually allow import of a file, or just load??
   } else {
     scfg <- list()
+  }
+
+  if (!checkmate::test_class(scfg, "bg_study_cfg")) {
+    class(scfg) <- c(class(scfg), "bg_study_cfg")
   }
 
   if (is.null(scfg$project_name)) scfg$project_name <- prompt_input("What is the name of your project?", type = "character")
@@ -89,7 +310,7 @@ setup_study <- function(file = NULL) {
       ", .trim = FALSE), type = "flag"
   )
 
-  scfg$compute_environment <- setup_compute_environment(scfg)
+  scfg <- setup_compute_environment(scfg)
 
   # logging
   scfg$log_txt <- prompt_input("Create subject-level logs?",
@@ -102,6 +323,7 @@ setup_study <- function(file = NULL) {
 
   # run through configuration of each step
   scfg <- setup_heudiconv(scfg)
+  scfg <- setup_bids_validation(scfg)
   scfg <- setup_fmriprep(scfg)
   scfg <- setup_mriqc(scfg)
   if (isTRUE(scfg$run_aroma)) scfg <- setup_aroma(scfg)
@@ -136,6 +358,22 @@ setup_fmriprep <- function(scfg = NULL, prompt_all = FALSE) {
     scfg$fmriprep$cli_options <- set_cli_options(scfg$fmriprep$cli_options, glue("--mem {scfg$fmriprep$memgb*1000}"))
   }
 
+  return(scfg)
+
+}
+
+setup_bids_validation <- function(scfg) {
+  defaults <- list(
+    memgb = 32,
+    nhours = 2,
+    ncores = 1,
+    cli_options = "",
+    sched_args = ""
+  )
+
+  scfg <- setup_job(scfg, "bids_validation", defaults = defaults)
+
+  return(scfg)
 }
 
 #' Specify the mriqc settings
@@ -143,7 +381,6 @@ setup_fmriprep <- function(scfg = NULL, prompt_all = FALSE) {
 #' @return a modified version of `scfg` with `$mriqc` populated
 #' @keywords internal
 setup_mriqc <- function(scfg) {
-  # TOOO once I have internet
   defaults <- list(
     memgb = 32,
     nhours = 12,
@@ -152,8 +389,10 @@ setup_mriqc <- function(scfg) {
     sched_args = ""
   )
 
-  #scfg$mriqc <- populate_defaults(scfg$fmriprep, defaults)
+  # scfg$mriqc <- populate_defaults(scfg$fmriprep, defaults)
   scfg <- setup_job(scfg, "mriqc", defaults = defaults)
+
+  return(scfg)
 }
 
 #' Specify the heudiconv settings
@@ -173,9 +412,9 @@ setup_heudiconv <- function(scfg, prompt_all = FALSE) {
 
   cat("This step sets up heudiconv.\n")
 
+  scfg$heudiconv$heuristic_file <- prompt_input(instruct = glue("What is the location of the heudiconv heuristic file?"), type = "file", prompt = ">")
   scfg <- setup_job(scfg, "heudiconv", defaults = defaults)
 
-  scfg$heudiconv$heuristic_file <- prompt_input(instruct = glue("What is the location of the heudiconv heurtistic file?"), type = "file", prompt = ">")
   return(scfg)
 }
 
@@ -225,29 +464,6 @@ get_sub_id <- function(bids_dir) {
   sub("sub-", "", basename(bids_dir))
 }
 
-#' convert a number of hours to a days, hours, minutes, seconds format
-#'
-#' @importFrom lubridate day hour minute second seconds_to_period dhours
-#' @keywords internal
-#' @details REDUNDANT WITH fmri.pipeline
-hours_to_dhms <- function(hours, frac = FALSE) {
-  checkmate::assert_number(hours, lower = 0)
-  dur <- lubridate::dhours(hours)
-  period <- seconds_to_period(dur)
-
-  if (isTRUE(frac)) {
-    str <- sprintf("%02d:%02d:%.03f", hour(period), minute(period), second(period))
-  } else {
-    str <- sprintf("%02d:%02d:%02d", hour(period), minute(period), round(second(period)))
-  }
-
-  if (day(period) > 0) {
-    str <- paste0(sprintf("%d-", day(period)), str)
-  }
-
-  return(str)
-}
-
 # helper function to populate defaults for config
 populate_defaults <- function(target = NULL, defaults) {
   if (is.null(target)) target <- list()
@@ -281,7 +497,7 @@ get_compute_environment_from_file <- function(scfg) {
         )
 
         if ("compute_environment" %in% names(ff)) {
-          scfg$compute_enviroment <- ff$compute_enviroment
+          scfg$compute_environment <- ff$compute_environment
         } else if (any(possible_fields %in% names(ff))) {
           # config has the settings as the top layer (malformed, but okay)
           for (field in possible_fields) {
@@ -308,16 +524,16 @@ setup_compute_environment <- function(scfg = list()) {
   # if empty, allow population from external file
   scfg <- get_compute_environment_from_file(scfg)
 
-  if (is.null(scfg$scheduler) || !checkmate::test_subset(scfg$scheduler, c("slurm", "torque"))) {
-    scfg$scheduler <- prompt_input("Scheduler (slurm/torque): ",
+  if (is.null(scfg$compute_environment$scheduler) || !checkmate::test_subset(scfg$compute_environment$scheduler, c("slurm", "torque"))) {
+    scfg$compute_environment$scheduler <- prompt_input("Scheduler (slurm/torque): ",
       instruct = "The pipeline currently runs on TORQUE (aka qsub) and SLURM clusters.\nWhich will you use?",
       type = "character", len = 1L, among = c("slurm", "torque")
     )
   }
 
   # location of fmriprep container
-  if (!validate_exists(scfg$compute_enviroment$fmriprep_container, description = "fmriprep container", prompt_change = TRUE)) {
-    scfg$compute_enviroment$fmriprep_container <- prompt_input(
+  if (!validate_exists(scfg$compute_environment$fmriprep_container, description = "fmriprep container", prompt_change = TRUE)) {
+    scfg$compute_environment$fmriprep_container <- prompt_input(
       instruct = glue("
       The pipeline depends on having a working fmriprep container (docker or singularity).
       If you don't have this yet, follow these instructions first:
@@ -329,8 +545,8 @@ setup_compute_environment <- function(scfg = list()) {
   }
 
   # location of heudiconv container
-  if (!validate_exists(scfg$compute_enviroment$heudiconv_container, description = "heudiconv container", prompt_change = TRUE)) {
-    scfg$compute_enviroment$heudiconv_container <- prompt_input(
+  if (!validate_exists(scfg$compute_environment$heudiconv_container, description = "heudiconv container", prompt_change = TRUE)) {
+    scfg$compute_environment$heudiconv_container <- prompt_input(
       instruct = glue("
       The pipeline depends on having a working heudiconv container (docker or singularity).
       If you don't have this yet, follow these instructions first:
@@ -341,23 +557,40 @@ setup_compute_environment <- function(scfg = list()) {
     )
   }
 
+  # location of bids-validator binary
+  if (!validate_exists(scfg$compute_environment$bids_validator, description = "bids-validator program", prompt_change = TRUE)) {
+    scfg$compute_environment$bids_validator <- prompt_input(
+      instruct = glue("
+      After BIDS conversion, the pipeline can pass resulting BIDS folders to bids-validator to verify that 
+      the folder conforms to the BIDS specification. You can read more about validtion here: 
+      https://bids-validator.readthedocs.io/en/stable/index.html.
+      
+      If you'd like to include BIDS validation in the processing pipeline, specify the location of the 
+      bids-validator program here. If you need help building this program, follow these instructions: 
+      https://bids-validator.readthedocs.io/en/stable/user_guide/command-line.html.
+    ", .trim = FALSE),
+      prompt = "Location of bids-validator program: ",
+      type = "file", required = FALSE
+    )
+  }
+
   # location of mriqc container
-  if (!validate_exists(scfg$compute_enviroment$mriqc_container, description = "mriqc container", prompt_change = TRUE)) {
-    scfg$compute_enviroment$mriqc_container <- prompt_input(
+  if (!validate_exists(scfg$compute_environment$mriqc_container, description = "mriqc container", prompt_change = TRUE)) {
+    scfg$compute_environment$mriqc_container <- prompt_input(
       instruct = glue("
       The pipeline can use MRIQC to produce automated QC reports. This is suggested, but not required.
       If you'd like to use MRIQC, you need a working mriqc container (docker or singularity).
       If you don't have this yet, this should work to build the latest version:
         singularity build /location/to/mriqc-latest.simg docker://nipreps/mriqc:latest
     ", .trim = FALSE),
-      prompt = "Location of mriqc container (press enter to skip): ",
+      prompt = "Location of mriqc container: ",
       type = "file", required = FALSE
     )
   }
 
   # location of ICA-AROMA fMRIprep container
-  if (!validate_exists(scfg$compute_enviroment$aroma_container, description = "ICA-AROMA container", prompt_change = TRUE)) {
-    scfg$compute_enviroment$aroma_container <- prompt_input(
+  if (!validate_exists(scfg$compute_environment$aroma_container, description = "ICA-AROMA container", prompt_change = TRUE)) {
+    scfg$compute_environment$aroma_container <- prompt_input(
       instruct = glue("
       The pipeline can use ICA-AROMA to denoise fMRI timeseries. As descried in Pruim et al. (2015), this
       is a data-driven step that produces a set of temporal regressors that are thought to be motion-related.
@@ -366,7 +599,7 @@ setup_compute_environment <- function(scfg = list()) {
 
       This is required if you say 'yes' to running AROMA during study setup.
     ", .trim = FALSE),
-      prompt = "Location of ICA-AROMA container (press enter to skip): ",
+      prompt = "Location of ICA-AROMA container: ",
       type = "file", required = FALSE
     )
   }
