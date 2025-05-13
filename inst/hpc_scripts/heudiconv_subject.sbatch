@@ -29,14 +29,15 @@ source "${pipedir}/pipeline_functions"
 ####
 #verify necessary arguments
 [ -z "$heudiconv_container" ] && echo "heudiconv_container not set. Exiting" && exit 1
-[ -z "$loc_dicom_root" ] && echo "loc_dicom_root not set. Exiting." && exit 1
+[ -z "$loc_sub_dicoms" ] && echo "loc_sub_dicoms not set. Exiting." && exit 1
 [ -z "$loc_bids_root" ] && echo "loc_bids_root not set. Exiting." && exit 1
 [ -z "$heudiconv_heuristic" ] && echo "No heudiconv_heuristic variable set." && exit 1
 [ -z "$sub" ] && echo "sub not set. Exiting." && exit 1
+[ -n "$ses" ] && ses_flag="--ses $ses" || ses_flag=""
 
 # [ -z "${heudiconv_location}" ] && echo "No heudiconv_location variable set." && exit 1
 # [ -z "${heudiconv_heuristic}" ] && echo "No heudiconv_heuristic variable set." && exit 1
-# [ -z "${loc_dicom_root}" ] && echo "No loc_dicom_root variable set." && exit 1
+# [ -z "${loc_sub_dicoms}" ] && echo "No loc_sub_dicoms variable set." && exit 1
 # [ -z "${loc_bids_root}" ] && echo "No loc_bids_root variable set." && exit 1
 
 
@@ -47,13 +48,16 @@ source "${pipedir}/pipeline_functions"
 # rel "${heudiconv_location} -d ${loc_dicom_root}/{subject}/*/*.dcm -s $sub -f ${heudiconv_heuristic} -c dcm2niix -o ${loc_bids_root} -b && date \"+%m%d%y@%H:%M\" > ${loc_bids_root}/sub-${sub}/.heudiconv.complete" $rel_suffix
 # rel "${pipedir}/add_intendedfor_bold ${loc_bids_root}/sub-${sub}" $rel_suffix #add IntendedFor field to FMAP jsons, pointing to all BOLD
 
-singularity_cmd="singularity run --cleanenv -B $loc_bids_root -B $loc_dicom_root $heudiconv_container
+singularity_cmd="singularity run --cleanenv -B $loc_bids_root -B $loc_sub_dicoms $heudiconv_container
 
-rel $rel_flag ${singularity_cmd} -d ${loc_dicom_root}/{subject}/*/*.dcm -s $sub \
+# we now use --files to specify the dicoms to convert rather than -d since we don't want to assume
+# the dicoms are in a specific directory structure (esp. in terms of level of nesting).
+rel $rel_flag ${singularity_cmd} --files ${loc_sub_dicoms} -s $sub $ses_flag \
   -f $heudiconv_heuristic -c dcm2niix \
-  -o ${loc_bids_root} -b && date '+%m%d%y@%H:%M' > ${loc_bids_root}/sub-${sub}/.heudiconv.complete"
+  -o ${loc_bids_root} --bids && date '+%m%d%y@%H:%M' > ${loc_bids_root}/sub-${sub}/.heudiconv_complete"
 
 #singularity run --cleanenv -B /proj/mnhallqlab/projects/preproc_pipeline_test_data/dicoms \
 #  -B /proj/mnhallqlab/projects/preproc_pipeline_test_data/processed \
 #  /proj/mnhallqlab/users/michael/fmriprep_pipeline_setup/heudiconv_latest.sif \
-#  --files dicoms/540294 -f heuristic.py -s 540294 -c dcm2niix --bids
+#  --files dicoms/540294 -f heuristic.py -s 540294 -c dcm2niix --bids \
+#  -o /proj/mnhallqlab/projects/preproc_pipeline_test_data/processed

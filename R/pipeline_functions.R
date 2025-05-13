@@ -162,22 +162,22 @@ pretty_print_list <- function(x, indent = 0, width = 80) {
 setup_job <- function(scfg, job_name = NULL, prompt_all = FALSE, defaults = NULL) {
   if (prompt_all || is.null(scfg[[job_name]]$memgb)) {
     default_str <- ifelse(is.null(defaults$memgb), "", glue(" ({defaults$memgb} GB recommended)"))
-    scfg[[job_name]]$memgb <- prompt_input(instruct = glue("How many GB of memory should be used for running {job_name}?{default_str}"), type = "integer", prompt = ">", lower = 1, upper = 1024, len = 1L)
+    scfg[[job_name]]$memgb <- prompt_input(instruct = glue("How many GB of memory should be used for running {job_name}?{default_str}"), type = "integer", lower = 1, upper = 1024, len = 1L, default=16L)
   }
 
   # if (prompt_all || is.null(scfg[[job_name]]$walltime)) {
   #   default_str <- ifelse(is.null(defaults$walltime), "", glue(" ({defaults$walltime} GB recommended)"))
-  #   scfg[[job_name]]$walltime <- hours_to_dhms(prompt_input(instruct = glue("How many hours should each run of {job_name} request? (min. 12 hours recommended)"), type = "integer", prompt = ">", lower = 1, upper = 1000, len = 1L))
+  #   scfg[[job_name]]$walltime <- hours_to_dhms(prompt_input(instruct = glue("How many hours should each run of {job_name} request? (min. 12 hours recommended)"), type = "integer", lower = 1, upper = 1000, len = 1L))
   # }
 
   if (prompt_all || is.null(scfg[[job_name]]$nhours)) {
     default_str <- ifelse(is.null(defaults$nhours), "", glue(" ({defaults$nhours} hours recommended)"))
-    scfg[[job_name]]$nhours <- prompt_input(instruct = glue("How many hours should each run of {job_name} request?{default_str}"), type = "numeric", prompt = ">", lower = 0.1, upper = 1000, len = 1L)
+    scfg[[job_name]]$nhours <- prompt_input(instruct = glue("How many hours should each run of {job_name} request?{default_str}"), type = "numeric", lower = 0.1, upper = 1000, len = 1L)
   }
 
   if (prompt_all || is.null(scfg[[job_name]]$ncores)) {
     default_str <- ifelse(is.null(defaults$ncores), "", glue(" ({defaults$ncores} recommended)"))
-    scfg[[job_name]]$ncores <- prompt_input(instruct = glue("How many cores/CPUs should each job request?{default_str}"), type = "integer", prompt = ">", lower = 1, upper = 1000, len = 1L)
+    scfg[[job_name]]$ncores <- prompt_input(instruct = glue("How many cores/CPUs should each job request?{default_str}"), type = "integer", lower = 1, upper = 1000, len = 1L)
   }
 
   if (prompt_all || is.null(scfg[[job_name]]$cli_options)) {
@@ -341,7 +341,14 @@ prompt_input <- function(prompt = "", prompt_eol=">", instruct = NULL, type = "c
     if (!is.null(default) && r[1L] == "") {
       return(default)
     } else if (isFALSE(required) && r[1L] == "") {
-      return(NA) # empty input and not required
+      empty <- switch(type,
+        "integer" = NA_integer_,
+        "numeric" = NA_real_,
+        "character" = NA_character_,
+        "flag" = NA,
+        "file" = NA_character_
+      )
+      return(empty) # empty input and not required
     } else if (isTRUE(uniq) && length(unique(r)) != length(r)) {
       cat("All entries must be unique.\n")
     } else if (type == "flag") {
