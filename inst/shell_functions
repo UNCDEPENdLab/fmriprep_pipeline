@@ -258,3 +258,27 @@ function link_job_listings() {
 
   echo $base
 }
+
+
+function trap_job_failure() {
+  local step="$1"
+  local signal="$2"
+  local now
+  now=$(date +"%Y-%m-%d %H:%M:%S")
+  local fail_file=".${step}_fail"
+
+  # "unknown" if SLURM variables are unset
+  local job_id="${SLURM_JOB_ID:-unknown}"
+  local job_name="${SLURM_JOB_NAME:-unknown}"
+
+  {
+    echo "[$now] $step job failed."
+    echo "  Signal     : $signal"
+    echo "  Job ID     : $job_id"
+    echo "  Job Name   : $job_name"
+    echo "  Working Dir: $(pwd)"
+    echo
+  } >> "$fail_file"
+
+  exit 1
+}

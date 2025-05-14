@@ -13,9 +13,11 @@
 #' @importFrom glue glue
 #' @importFrom checkmate assert_list assert_flag assert_directory_exists
 #' @importFrom lgr get_logger_glue
-run_study <- function(scfg, prompt = TRUE, force = FALSE) {
+run_study <- function(scfg, prompt = TRUE, debug = FALSE, force = FALSE) {
   checkmate::assert_list(scfg)
   checkmate::assert_flag(prompt)
+  checkmate::assert_flag(debug)
+  checkmate::assert_flag(force)
 
   if (is.null(scfg$project_name)) stop("Cannot run a nameless project. Have you run setup_study() yet?")
   if (is.null(scfg$project_directory)) stop("Cannot run a project lacking a project directory. Have you run setup_study() yet?")
@@ -38,6 +40,8 @@ run_study <- function(scfg, prompt = TRUE, force = FALSE) {
     )
     if (isTRUE(scfg$run_aroma)) steps <- c(steps, "aroma")
     scfg$log_level <- "INFO" # how much detail to park in logs
+    scfg$debug <- debug # pass forward debug flag from arguments
+    scfg$force <- force # pass forward force flag from arguments
   } else {
     steps <- c()
     cat("\nPlease select which steps to run:\n")
@@ -53,6 +57,11 @@ run_study <- function(scfg, prompt = TRUE, force = FALSE) {
         "to run AROMA as part of the pipeline. Postprocessing will likely fail if AROMA components cannot be found."
       )
     }
+    # check whether to run in debug mode
+    scfg$debug <- prompt_input(instruct = "Run pipeline in debug mode? This will echo commands to logs, but not run them.", type = "flag")
+
+    scfg$force <- prompt_input(instruct = "Force each processing step, even if it appears to be complete?", type = "flag")
+
     steps <- c(
         bids_conversion = run_bids_conversion,
         bids_validation = run_bids_validation,
@@ -63,7 +72,7 @@ run_study <- function(scfg, prompt = TRUE, force = FALSE) {
     )
     
     scfg$log_level <- prompt_input(
-      instruct = "What level of detail would you like in logs? Options are INFO, DEBUG,..",
+      instruct = "What level of detail would you like in logs? Options are INFO, DEBUG, ERROR.",
       type = "character", among=c("INFO", "ERROR", "DEBUG")
     )
   }
@@ -79,7 +88,9 @@ run_study <- function(scfg, prompt = TRUE, force = FALSE) {
       stop(glue("Cannot find any valid subject folders inside the DICOM directory: {scfg$dicom_directory}"))
     }
   } else {
-    subject_dicom_dirs <- character()
+    subject_dicom_dirs <- data.frame(sub_id = character(), ses_id = character(), 
+    dicom_sub_dir = character(), dicom_ses_dir = character(), stringsAsFactors = FALSE
+    )
   }
 
   # look for all existing subject BIDS directories
@@ -88,15 +99,11 @@ run_study <- function(scfg, prompt = TRUE, force = FALSE) {
   
   subject_dirs <- merge(subject_dicom_dirs, subject_bids_dirs, by = c("sub_id", "ses_id"), all = TRUE)
 
-  # determine which subjects are missing from the BIDS directory
-
-  debug <- prompt_input(instruct = "Run pipeline in debug mode? This will echo commands to logs, but not run them.", type = "flag")
-
-  if (length(sub_dirs) == 0L) {
-    stop(glue("Cannot find any sub-* folders inside the bids directory: {scfg$bids_directory}"))
+  if (nrow(subject_dirs) == 0L) {
+    stop(glue("Cannot find any valida subject folders in bids directory: {scfg$bids_directory}"))
   } else {
-    for (ss in sub_dirs) {
-      process_subject(scfg, ss, steps, force = force, debug = debug)
+    for (ss in seq_len(nrow(subject_dirs))) {
+      process_subject(scfg, as.list(subject_dirs[ss, ]), steps)
     }
   }
 }

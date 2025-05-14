@@ -3,26 +3,19 @@
 #SBATCH -N 1
 #SBATCH -n 4
 #SBATCH --time=24:00:00
-#SBATCH --memgb=48gb
+#SBATCH --mem=48g
 
 set -e
-cd $SLURM_SUBMIT_DIR
-
-####
-#setup compute environment
-# [ -z "$pipedir" ] && pipedir="$PWD"
 
 # source bash functions used in pipeline shell scripts
-pipedir=$( dirname "$0" )
-source "${pipedir}/pipeline_functions"
+[ -z "$pkg_dir" ] && echo "pkg_dir not set. Cannot locate required helper scripts" && exit 1
+source "${pkg_dir}/shell_functions"
 
-#in principle, we could pass all environment variables in with -v
-# [ -z "$env_file" ] && env_file="${pipedir}/compute_environment.cfg" #set default
-# [ ! -r "$env_file" ]  && echo "Cannot access compute config file ${env_file}" && exit 1
-# source "$env_file" #setup relevant variables for this processing environment
-
-[[ -n "${study_cfg}" && -r "${study_cfg}" ]] && source "${study_cfg}" #source a study config file if passed as environment variable
-
+# Set trap for common termination signals
+trap 'trap_job_failure fmriprep SIGTERM' SIGTERM
+trap 'trap_job_failure fmriprep SIGINT' SIGINT
+trap 'trap_job_failure fmriprep SIGHUP' SIGHUP
+trap 'trap_job_failure fmriprep SIGQUIT' SIGQUIT
 
 # default nthreads to however many cores we have $SLURM_SOMETHING
 [ -z "$fmriprep_nthreads" ] && echo "No fmriprep_nthreads environment variable. Defaulting to 4" && fmriprep_nthreads=4
@@ -33,7 +26,22 @@ source "${pipedir}/pipeline_functions"
 [ -z "$loc_mrproc_root" ] && echo "loc_mrproc_root not set. Exiting." && exit 1
 [ -z "$loc_scratch" ] && echo "loc_scratch not set. Exiting." && exit 1
 [ -z "$loc_bids_root" ] && echo "loc_bids_root not set. Exiting." && exit 1
-[ -z "$sub" ] && echo "sub not set. Exiting." && exit 1
+[ -z "$sub_id" ] && echo "sub_id not set. Exiting." && exit 1
+[[ "$debug_pipeline" == "TRUE" ]] && debug_pipeline=1 || debug_pipeline=0 # set debug_pipeline to 1 if it is set to TRUE, otherwise set it to 0
+
+###
+# handle multi-session setup
+if [ -n "$ses_id" ]; then
+  out_dir=${loc_bids_root}/sub-${sub_id}/ses-${ses_id}
+  ses_flag="--ses $ses_id"
+  ses_str="session $ses_id"
+else
+  out_dir=${loc_bids_root}/sub-${sub_id}
+  ses_flag=""
+  ses_str=""
+fi
+mkdir -p "$out_dir"
+cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
 
 ####
 [[ "$debug_pipeline" -eq 1 ]] && rel_flag=c #if debug_pipeline is 1, only echo command to log, don't run it
@@ -49,15 +57,17 @@ source "${pipedir}/pipeline_functions"
 #     "--fs-license-file {fslicense} {threads} {useAROMA} {other_opts}"
 # )
 
-singularity_cmd="singularity run --cleanenv -B $loc_bids_root:/data -B $loc_scratch:/work $fmriprep_container
+singularity_cmd="singularity run --cleanenv -B $loc_bids_root:/data -B $loc_scratch:/work $fmriprep_container"
+
+rel c $cmd_log Starting fmriprep for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the heudiconv command
 
 rel $rel_flag $singularity_cmd \
     "$loc_bids_root" "$loc_mrproc_root/" participant \
-    --participant-label $sub \
-    --nthreads $fmriprep_nthreads \
-    $cli_options && date '+%m%d%y@%H:%M' > $loc_mrproc_root/sub-$sub/.fmriprep.complete"
+    $cli_options 
+    #--participant-label $sub_id \
+    #--nthreads $fmriprep_nthreads \
+    #$cli_options 
+    
+[[ $? -eq 0 && $debug_pipeline -eq 0 ]] && date +"%Y-%m-%d %H:%M:%S" > ${out_dir}/.fmriprep_complete
 
-
-
-#add --low-mem?
-#add --mem-mb?
+rel c $cmd_log Finished heudiconv for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the heudiconv command

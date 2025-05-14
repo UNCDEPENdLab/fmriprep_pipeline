@@ -376,6 +376,19 @@ setup_bids_validation <- function(scfg) {
 
   scfg <- setup_job(scfg, "bids_validation", defaults = defaults)
 
+  scfg$bids_validation$outfile <- prompt_input(
+    instruct = glue("
+      \nWhat should be the name of the output file created by bids_validator? The default is bids_validator_output.html
+      You can also include the subject and session IDs in the filename by using the following
+      placeholders: {sub_id} and {ses_id}. For example, bids_validation_sub-{sub_id}_ses-{ses_id}.html will substitute
+      the subject and session IDs into the filename. This is useful if you want to place the output files in a common
+      directory for all subjects and sessions, but still want to be able to identify which file belongs to which subject.
+      \n
+    "),
+    prompt = "What is the name of the output file for bids-validator?",
+    type = "character", default = "bids_validator_output.html"
+  )
+
   return(scfg)
 }
 

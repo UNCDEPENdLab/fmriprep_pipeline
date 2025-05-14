@@ -4,7 +4,7 @@
 \alias{run_study}
 \title{Run the processing pipeline}
 \usage{
-run_study(scfg, prompt = TRUE, force = FALSE)
+run_study(scfg, prompt = TRUE, debug = FALSE, force = FALSE)
 }
 \arguments{
 \item{scfg}{A list containing the study configuration.}

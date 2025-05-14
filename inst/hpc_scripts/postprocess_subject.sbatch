@@ -3,7 +3,7 @@
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH --time=4:00:00
-#SBATCH --memgb=48gb
+#SBATCH --mem=48g
 
 set -e
 cd $SLURM_SUBMIT_DIR
