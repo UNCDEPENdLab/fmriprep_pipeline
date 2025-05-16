@@ -4,10 +4,13 @@
 \alias{setup_study}
 \title{Setup the processing pipeline for a new fMRI study}
 \usage{
-setup_study(file = NULL)
+setup_study(input = NULL, fields = NULL)
 }
 \arguments{
-\item{file}{a YAML file specifying the location of an existing configuration file to be loaded}
+\item{input}{an existing \code{bg_study_cfg} object to be modified or a string
+specifying the location of an existing configuration YAML file to be loaded}
+
+\item{fields}{a character vector of fields to be prompted for. If \code{NULL}, all fields will be prompted for.}
 }
 \description{
 Setup the processing pipeline for a new fMRI study

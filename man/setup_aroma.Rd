@@ -4,7 +4,7 @@
 \alias{setup_aroma}
 \title{Specify the aroma settings}
 \usage{
-setup_aroma(scfg, prompt_all = FALSE)
+setup_aroma(scfg, fields = NULL)
 }
 \arguments{
 \item{scfg}{a study configuration object, as produced by \code{load_study} or \code{setup_study}}

@@ -4,11 +4,17 @@
 \alias{setup_postprocessing}
 \title{Specify postprocessing setting for a study}
 \usage{
-setup_postprocessing(scfg = list())
+setup_postprocessing(scfg = list(), fields = NULL)
 }
 \arguments{
 \item{scfg}{a study configuration object produced by \code{setup_study}}
+
+\item{fields}{a character vector of fields to be prompted for. If \code{NULL}, all fields will be prompted for.}
+}
+\value{
+a modified version of \code{scfg} with the \verb{$postprocess} field populated
 }
 \description{
 Specify postprocessing setting for a study
 }
+\keyword{internal}

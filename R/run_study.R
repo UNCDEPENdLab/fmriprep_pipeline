@@ -78,21 +78,23 @@ run_study <- function(scfg, prompt = TRUE, debug = FALSE, force = FALSE) {
   }
 
   # look for subject directories in the DICOM directory
+  # empty default data.frame for dicom directories
+  subject_dicom_dirs <- data.frame(
+    sub_id = character(), ses_id = character(),
+    dicom_sub_dir = character(), dicom_ses_dir = character(), stringsAsFactors = FALSE
+  )
+
   if (isTRUE(run_bids_conversion)) {
-    subject_dicom_dirs <- get_subject_dirs(scfg$dicom_directory, sub_regex = scfg$heudiconv$sub_regex, ses_regex = scfg$heudiconv$ses_regex, full.names=TRUE)
+    subject_dicom_dirs <- get_subject_dirs(scfg$dicom_directory, sub_regex = scfg$heudiconv$sub_regex, ses_regex = scfg$heudiconv$ses_regex, full.names = TRUE)
 
     # add DICOM prefix
     names(subject_dicom_dirs) <- sub("(sub|ses)_dir", "dicom_\\1_dir", names(subject_dicom_dirs))
-    
-    if (length(subject_dicom_dirs) == 0L) {
-      stop(glue("Cannot find any valid subject folders inside the DICOM directory: {scfg$dicom_directory}"))
-    }
-  } else {
-    subject_dicom_dirs <- data.frame(sub_id = character(), ses_id = character(), 
-    dicom_sub_dir = character(), dicom_ses_dir = character(), stringsAsFactors = FALSE
-    )
-  }
 
+    if (length(subject_dicom_dirs) == 0L) {
+      warning(glue("Cannot find any valid subject folders inside the DICOM directory: {scfg$dicom_directory}"))
+    }
+  }
+  
   # look for all existing subject BIDS directories
   subject_bids_dirs <- get_subject_dirs(scfg$bids_directory, sub_regex = "^sub-.+", ses_regex = "^ses-.+", sub_id_match = "sub-(.*)", ses_id_match = "ses-(.*)", full.names = TRUE)
   names(subject_bids_dirs) <- sub("(sub|ses)_dir", "bids_\\1_dir", names(subject_bids_dirs))

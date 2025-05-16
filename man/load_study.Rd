@@ -4,7 +4,7 @@
 \alias{load_study}
 \title{Load a study configuration from a file}
 \usage{
-load_study(file = NULL)
+load_study(file = NULL, validate = TRUE)
 }
 \arguments{
 \item{file}{a YAML file containing a valid study configuration}

@@ -76,8 +76,10 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
 
   ## Handle BIDS conversion -- session-level
   n_inputs <- nrow(sub_cfg)
-  bids_conversion_ids <- sapply(seq_len(n_inputs), function(idx) submit_step("bids_conversion", row_idx = idx))
 
+  # need unlist because NULL will be returned for jobs not submitted -- yielding a weird list of NULLs
+  bids_conversion_ids <- unlist(lapply(seq_len(n_inputs), function(idx) submit_step("bids_conversion", row_idx = idx)))
+  
   if (isTRUE(steps["bids_conversion"])) {  
     # Use expected directory as input to subsequent steps, anticipating that conversion completes
     # and the expected directory is created. If conversion fails, the dependent jobs should automatically fail.
@@ -119,7 +121,7 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
   aroma_id <- submit_step("aroma", parent_ids = c(bids_conversion_ids, bids_validation_id, fmriprep_id))
 
   ## Handle postprocessing
-  postprocess_ids <- sapply(seq_len(n_inputs), function(idx) submit_step("postprocess", row_idx = idx, parent_ids = c(bids_conversion_ids, bids_validation_id, fmriprep_id, aroma_id)))
+  postprocess_ids <- unlist(lapply(seq_len(n_inputs), function(idx) submit_step("postprocess", row_idx = idx, parent_ids = c(bids_conversion_ids, bids_validation_id, fmriprep_id, aroma_id))))
 
   return(TRUE) # nothing interesting for now
 }
@@ -195,6 +197,7 @@ submit_bids_validation <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id =
 
 submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, parent_ids = NULL) {
   checkmate::assert_list(scfg)
+  checkmate::assert_character(parent_ids, null.ok = TRUE)
 
   jobid_str <- if (!is.null(ses_id) || is.na(ses_id[1L])) {
     glue("fmriprep-sub-{sub_id}_ses-{ses_id}")
@@ -226,6 +229,7 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
     ses_id = ses_id,
     loc_bids_root = scfg$bids_directory,
     loc_mrproc_root = scfg$fmriprep_directory,
+    loc_scratch = scfg$scratch_directory,
     debug_pipeline = scfg$debug,
     cli_options = cli_options,
     pkg_dir=system.file(package = "BGprocess")

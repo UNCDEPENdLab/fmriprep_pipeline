@@ -4,10 +4,12 @@
 \alias{setup_spatial_smooth}
 \title{Specify the spatial smoothing settings for postprocessing}
 \usage{
-setup_spatial_smooth(scfg = list())
+setup_spatial_smooth(scfg = list(), fields = NULL)
 }
 \arguments{
 \item{scfg}{a study configuration object created by \code{setup_study}}
+
+\item{fields}{a character vector of fields to be prompted for. If \code{NULL}, all fields will be prompted for.}
 }
 \value{
 a modified version of \code{scfg} with the \verb{$postprocess$spatial_smooth} field populated

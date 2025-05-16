@@ -9,7 +9,6 @@
 #' @param simplify a boolean indicating whether to simplify the output. Default is TRUE
 #' @return a named list of values corresponding to the keys in the key strings
 #' @keywords internal
- of the form parent/child/grandchild where this corresponds to my_list$parent$child$granchild
 get_nested_values <- function(lst, key_strings, sep = "/", simplify = TRUE) {
   split_keys_list <- strsplit(key_strings, sep)
   
@@ -202,11 +201,6 @@ setup_job <- function(scfg, job_name = NULL, defaults = NULL, fields = NULL) {
       type = "numeric", lower = 1, upper = 1024, len = 1L, default = defaults$memgb
     )
   }
-
-  # if (prompt_all || is.null(scfg[[job_name]]$walltime)) {
-  #   default_str <- ifelse(is.null(defaults$walltime), "", glue(" ({defaults$walltime} GB recommended)"))
-  #   scfg[[job_name]]$walltime <- hours_to_dhms(prompt_input(instruct = glue("How many hours should each run of {job_name} request? (min. 12 hours recommended)"), type = "integer", lower = 1, upper = 1000, len = 1L))
-  # }
 
   if (is.null(scfg[[job_name]]$nhours) || glue("{job_name}/nhours") %in% fields) {
     scfg[[job_name]]$nhours <- prompt_input(

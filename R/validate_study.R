@@ -23,7 +23,7 @@ validate_study <- function(scfg = list(), quiet = FALSE) {
   required_dirs <- c("project_directory", "dicom_directory", "bids_directory", "fmriprep_directory", "scratch_directory")
   for (rr in required_dirs) {
     if (!checkmate::test_directory_exists(scfg[[rr]])) {
-      message("Config file is missing valid ", rr, ". You will be asked for this.")
+      message("Config file is missing valid ", rr, ".")
       gaps <- c(gaps, rr)
     }
   }
@@ -111,6 +111,31 @@ validate_study <- function(scfg = list(), quiet = FALSE) {
 #' @keywords internal
 validate_postprocess_config <- function(ppcfg, quiet = FALSE) {
   gaps <- c()
+
+  # postprocess/keep_intermediates
+  if ("keep_intermediates" %in% names(ppcfg)) {
+    if (!checkmate::test_flag(ppcfg$keep_intermediates)) {
+      if (!quiet) message("Invalid keep_intermediates in $postprocess. You will be asked for this.")
+      gaps <- c(gaps, "postprocess/keep_intermediates")
+      ppcfg$keep_intermediates <- NULL
+    }
+  }
+  # postprocess/overwrite
+  if ("overwrite" %in% names(ppcfg)) {
+      if (!checkmate::test_flag(ppcfg$overwrite)) {
+          if (!quiet) message("Invalid overwrite in $postprocess. You will be asked for this.")
+          gaps <- c(gaps, "postprocess/overwrite")
+          ppcfg$overwrite <- NULL
+      }
+  }
+  # postprocess/tr
+  if ("tr" %in% names(ppcfg)) {
+    if (!checkmate::test_number(ppcfg$tr, lower = 0.01, upper = 100)) {
+      if (!quiet) message("Invalid tr in $postprocess. You will be asked for this.")
+      gaps <- c(gaps, "postprocess/tr")
+      ppcfg$tr <- NULL
+    }
+  }
 
   # validate temporal filtering
   if ("temporal_filter" %in% names(ppcfg)) {

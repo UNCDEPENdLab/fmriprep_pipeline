@@ -4,7 +4,7 @@
 \alias{setup_compute_environment}
 \title{Setup the compute environment for a study}
 \usage{
-setup_compute_environment(scfg = list())
+setup_compute_environment(scfg = list(), fields = NULL)
 }
 \arguments{
 \item{scfg}{a study configuration object, as produced by \code{load_study} or \code{setup_study}}

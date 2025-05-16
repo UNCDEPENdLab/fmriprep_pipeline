@@ -8,7 +8,15 @@ process_subject(scfg, sub_cfg = NULL, steps = NULL)
 }
 \arguments{
 \item{scfg}{A list of configuration settings}
+
+\item{sub_cfg}{A data.frame of subject configuration settings}
+
+\item{steps}{A named logical vector indicating which steps to run}
+}
+\value{
+A logical value indicating whether the preprocessing was successful
 }
 \description{
 Preprocess a single subject
 }
+\keyword{internal}

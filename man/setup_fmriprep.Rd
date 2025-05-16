@@ -4,7 +4,7 @@
 \alias{setup_fmriprep}
 \title{Specify the fmriprep settings}
 \usage{
-setup_fmriprep(scfg = NULL, prompt_all = FALSE)
+setup_fmriprep(scfg = NULL, fields = NULL)
 }
 \arguments{
 \item{scfg}{a study configuration object, as produced by \code{load_study} or \code{setup_study}}

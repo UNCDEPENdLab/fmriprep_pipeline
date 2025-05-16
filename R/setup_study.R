@@ -2,19 +2,19 @@
 #' @param file a YAML file containing a valid study configuration
 #' @importFrom yaml read_yaml
 #' @export
-load_study <- function(file = NULL) {
-  if (!checkmate::test_file_exists(file)) {
-    stop("Cannot find file: ", file)
-  } else {
-    scfg <- read_yaml(file)
-    scfg <- validate_study(scfg)
-  }
+load_study <- function(file = NULL, validate=TRUE) {
+  if (!checkmate::test_file_exists(file)) stop("Cannot find file: ", file)
+  checkmate::test_flag(validate)
+  scfg <- read_yaml(file)
+  class(scfg) <- c(class(scfg), "bg_study_cfg") # add class to the object
+  if (validate) scfg <- validate_study(scfg)
+  return(scfg)
 }
 
 #' summary method for study configuration object
 #' @export
 summary.bg_study_cfg <- function(x) {
-  pretty_print_list(x)
+  pretty_print_list(x, indent=2)
 }
 
 #' Setup the processing pipeline for a new fMRI study
@@ -25,8 +25,8 @@ summary.bg_study_cfg <- function(x) {
 #' @importFrom checkmate test_file_exists
 #' @export
 setup_study <- function(input = NULL, fields = NULL) {
-  if (checkmate::test_string(input)) {
-    scfg <- load_study(input)
+  if (checkmate::test_string(input) && checkmate::test_file_exists(input)) {
+    scfg <- load_study(input, validate=FALSE)
   } else if (inherits(input, "bg_study_cfg")) {
     scfg <- input
   } else if (!is.null(input)) {
@@ -34,6 +34,13 @@ setup_study <- function(input = NULL, fields = NULL) {
   } else {
     scfg <- list()
   }
+
+  if (inherits(scfg, "bg_study_cfg")) {
+    scfg <- validate_study(scfg)
+    fields <- unique(c(fields, attr(scfg, "gaps")))
+  }
+
+  
 
   if (!checkmate::test_class(scfg, "bg_study_cfg")) {
     class(scfg) <- c(class(scfg), "bg_study_cfg")
@@ -178,7 +185,7 @@ setup_bids_validation <- function(scfg, fields=NULL) {
       instruct = glue("
       \nWhat should be the name of the output file created by bids_validator? The default is bids_validator_output.html
       You can also include the subject and session IDs in the filename by using the following
-      placeholders: {sub_id} and {ses_id}. For example, bids_validation_sub-{sub_id}_ses-{ses_id}.html will substitute
+      placeholders: {{sub_id}} and {{ses_id}}. For example, bids_validation_sub-{{sub_id}}_ses-{{ses_id}}.html will substitute
       the subject and session IDs into the filename. This is useful if you want to place the output files in a common
       directory for all subjects and sessions, but still want to be able to identify which file belongs to which subject.
       \n
@@ -212,9 +219,10 @@ setup_mriqc <- function(scfg, fields = NULL) {
 
 #' Specify the heudiconv settings
 #' @param scfg a study configuration object, as produced by `load_study` or `setup_study`
+#' @param fields a character vector of fields to be prompted for. If `NULL`, all fields will be prompted for.
 #' @return a modified version of `scfg` with `$heudiconv` populated
 #' @keywords internal
-setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
+setup_bids_conversion <- function(scfg, fields = NULL) {
   defaults <- list(
     memgb = 16,
     nhours = 2,
@@ -276,9 +284,9 @@ setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
     )
   }
 
-   if (is.null(scfg$heudiconv$sub_id_match) || "heudiconv/sub_id_match" %in% fields) {
-     scfg$heudiconv$sub_id_match <- prompt_input(
-       instruct = glue("
+  if (is.null(scfg$heudiconv$sub_id_match) || "heudiconv/sub_id_match" %in% fields) {
+    scfg$heudiconv$sub_id_match <- prompt_input(
+      instruct = glue("
       \nWhat is the regex pattern for extracting the ID from the subject folder name? You
       can use multiple capturing groups if the ID has multiple parts. The default is ([0-9]+),
       which extracts the first number-like sequence from the folder name. For example, if your
@@ -286,10 +294,10 @@ setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
       '001', the ID will be '001'. If the entire folder name is the subject ID, such as '001ra_2May2024',
       the id matching expression should be (.+), which matches all characters in the folder name.\n
     "),
-       prompt = "What is the regex pattern for extracting the subject ID from the folder name?",
-       type = "character", default = "(.+)"
-     )
-   }
+      prompt = "What is the regex pattern for extracting the subject ID from the folder name?",
+      type = "character", default = "(.+)"
+    )
+  }
 
   if (is.null(scfg$heudiconv$ses_regex) || "heudiconv/ses_regex" %in% fields) {
     scfg$heudiconv$ses_regex <- prompt_input(
@@ -304,7 +312,7 @@ setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
 
   if (!is.na(scfg$heudiconv$ses_regex) && (is.null(scfg$heudiconv$ses_id_match) || "heudiconv/ses_id_match" %in% fields)) {
     scfg$heudiconv$ses_id_match <- prompt_input(
-    instruct = glue("
+      instruct = glue("
       \nWhat is the regex pattern for extracting the ID from the subject folder name? You
       can use multiple capturing groups if the ID has multiple parts. The default is ([0-9]+),
       which extracts the first number-like sequence from the folder name. For example, if your
@@ -312,13 +320,13 @@ setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
       '001', the ID will be '001'. If the entire folder name is the subject ID, such as '001ra_2May2024',
       the id matching expression should be (.+), which matches all characters in the folder name.\n
     "),
-    prompt = "What is the regex pattern for extracting the subject ID from the folder name?",
-    type = "character", default = "(.+)"
-  )
+      prompt = "What is the regex pattern for extracting the subject ID from the folder name?",
+      type = "character", default = "(.+)"
+    )
   } else {
     scfg$heudiconv$ses_id_match <- NA_character_
   }
-  
+
 
   if (is.null(scfg$heudiconv$heuristic_file) || "heudiconv/heuristic_file" %in% fields) {
     scfg$heudiconv$heuristic_file <- prompt_input(instruct = glue("What is the location of the heudiconv heuristic file?"), type = "file")
@@ -327,28 +335,28 @@ setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
   if (is.null(scfg$heudiconv$overwrite) || "heudiconv/overwrite" %in% fields) {
     scfg$heudiconv$overwrite <- prompt_input(instruct = glue("Should existing BIDS files be overwritten by heudiconv?"), type = "flag", default = TRUE)
   }
+
   if (is.null(scfg$heudiconv$clear_cache) || "heudiconv/clear_cache" %in% fields) {
     scfg$heudiconv$clear_cache <- prompt_input(
       instruct = glue("Heudiconv caches its matching results inside the root of the BIDS folder in a hidden
-    directory called .heudiconv. This provides a record of what heudiconv did for each subject conversion.
-    It also speeds up conversions in future if you reprocess data. That said, if you modify the heuristic file,
-    the cache can interfere because it will use the old heuristic file to match DICOMs to BIDS.
-    If you want to clear the cache, say 'yes' here. If you want to keep the cache, say 'no'.
-    ", .trim = FALSE),
+      directory called .heudiconv. This provides a record of what heudiconv did for each subject conversion.
+      It also speeds up conversions in future if you reprocess data. That said, if you modify the heuristic file,
+      the cache can interfere because it will use the old heuristic file to match DICOMs to BIDS.
+      If you want to clear the cache, say 'yes' here. If you want to keep the cache, say 'no'.
+      ", .trim = FALSE),
       prompt = glue("Should the heudiconv cache be cleared?"),
       type = "flag", default = FALSE
     )
   }
-  
+
   if (is.null(scfg$heudiconv$validate_bids) || "heudiconv/validate_bids" %in% fields) {
-  scfg$heudiconv$validate_bids <- prompt_input(
-    instruct = glue("
+    scfg$heudiconv$validate_bids <- prompt_input(
+      instruct = glue("
       Should the BIDS folder be validated after conversion? This requires the bids-validator program to be installed.
       This is generally a good idea to ensure that the BIDS folder is valid and conforms to the BIDS specification.
       It can prevent downstream errors in fmriprep and other processing steps.
-    "),
-    type = "flag", default = TRUE
-  )
+      "), type = "flag", default = TRUE
+    )
   }
 
   scfg <- setup_job(scfg, "heudiconv", defaults = defaults)

@@ -4,7 +4,7 @@
 \alias{setup_mriqc}
 \title{Specify the mriqc settings}
 \usage{
-setup_mriqc(scfg)
+setup_mriqc(scfg, fields = NULL)
 }
 \arguments{
 \item{scfg}{a study configuration object, as produced by \code{load_study} or \code{setup_study}}

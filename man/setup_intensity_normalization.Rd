@@ -4,10 +4,12 @@
 \alias{setup_intensity_normalization}
 \title{Specify the intensity normalization settings for postprocessing}
 \usage{
-setup_intensity_normalization(scfg = list())
+setup_intensity_normalization(scfg = list(), fields = NULL)
 }
 \arguments{
 \item{scfg}{a study configuration object created by \code{setup_study}}
+
+\item{fields}{a character vector of fields to be prompted for. If \code{NULL}, all fields will be prompted for.}
 }
 \value{
 a modified version of \code{scfg} with the \verb{$postprocess$intensity_normalize} field populated
