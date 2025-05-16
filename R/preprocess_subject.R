@@ -27,7 +27,7 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
   log_str <- "sub-{sub_cfg$sub_id}"
   lg <- lgr::get_logger_glue(log_str)
   
-  bids_conversion_ids <- mriqc_id <- fmriprep_id <- aroma_id <- postprocess_ids <- NULL
+  bids_conversion_ids <- bids_validation_id <- mriqc_id <- fmriprep_id <- aroma_id <- postprocess_ids <- NULL
 
   # N.B. fmriprep processes a subject, not a session... Thus, we need to submit a top-level job for the subject
 
@@ -107,7 +107,9 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
   # Everything after BIDS conversion depends on the BIDS directory existing
 
   ## Handle BIDS validation
-  bids_validation_id <- submit_step("bids_validation", parent_ids = bids_conversion_ids)
+  # on further investigation, bids-validator only works on the root of the BIDS directory.
+  # so, maybe we should just let fmriprep handle this directly
+  # bids_validation_id <- submit_step("bids_validation", parent_ids = bids_conversion_ids)
 
   ## Handle MRIQC
   # mriqc_id <- submit_step("mriqc", parent_ids = c(bids_conversion_ids, bids_validation_id))

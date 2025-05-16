@@ -334,7 +334,7 @@ setup_spatial_smooth <- function(scfg = list(), fields = NULL) {
   }
 
   if (is.null(scfg$postprocess$spatial_smooth$prefix) || "postprocess/spatial_smooth/prefix" %in% fields) {
-    scfg$postprocess$spatial_smooth$prefix <- prompt_input("File prefix: ", type = "character", type = "s")
+    scfg$postprocess$spatial_smooth$prefix <- prompt_input("File prefix: ", type = "character", default = "s")
   }
   
   return(scfg)
