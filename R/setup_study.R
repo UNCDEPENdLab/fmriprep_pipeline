@@ -1,231 +1,3 @@
-# little helper function to allow a nested list to be traversed using key syntax
-# of the form parent/child/grandchild where this corresponds to my_list$parent$child$granchild
-get_nested_values <- function(lst, key_strings, sep = "/", simplify = TRUE) {
-  split_keys_list <- strsplit(key_strings, sep)
-  
-  ret <- sapply(seq_along(split_keys_list), function(i) {
-    keys <- split_keys_list[[i]]
-    val <- lst
-    
-    for (j in seq_along(keys)) {
-      key <- keys[[j]]
-      
-      if (j == length(keys) && is.atomic(val) && !is.null(names(val))) {
-        # If last key and val is a named vector
-        return(val[[key]])
-      } else if (!is.list(val) || is.null(val[[key]])) {
-        # Otherwise, standard list traversal
-        return(NULL)
-      }
-      val <- val[[key]]
-    }
-    return(val)
-  }, USE.NAMES = FALSE, simplify = simplify)
-  names(ret) <- key_strings
-  return(ret)
-}
-
-#' validate the structure of a study configuration object
-#' @param scfg a study configuration file as produced by `load_study` or `setup_study`
-#' @importFrom checkmate assert_flag test_class test_directory_exists test_file_exists
-#' @keywords internal
-validate_scfg <- function(scfg = list(), quiet = FALSE) {
-  if (!checkmate::test_class(scfg, "bg_study_cfg")) {
-    if (inherits(scfg, "list")) {
-      class(scfg) <- c(class(scfg), "bg_study_cfg")
-    } else {
-      stop("scfg must be a list of bg_study_cfg object")
-    }
-  }
-
-  checkmate::assert_flag(quiet)
-
-  gaps <- c()
-
-  if (is.null(scfg$project_name)) {
-    if (!quiet) message("Config file is missing project_name. You will be asked for this.")
-    gaps <- c(gaps, "project_name")
-  }
-
-  required_dirs <- c("project_directory", "dicom_directory", "bids_directory", "fmriprep_directory", "scratch_directory")
-  for (rr in required_dirs) {
-    if (!checkmate::test_directory_exists(scfg[[rr]])) {
-      message("Config file is missing valid ", rr, ". You will be asked for this.")
-      gaps <- c(gaps, rr)
-    }
-  }
-
-  required_files <- c("compute_environment/fmriprep_container", "compute_environment/heudiconv_container", "heudiconv/heuristic_file")
-  for (rr in required_files) {
-    if (!checkmate::test_file_exists(get_nested_values(scfg, rr))) {
-      message("Config file is missing valid ", rr, ". You will be asked for this.")
-      gaps <- c(gaps, rr)
-    }
-  }
-
-  # optional files
-  if (!is.null(scfg$compute_environment$bids_validator) && !checkmate::test_file_exists(scfg$compute_environment$bids_validator)) {
-    message("Cannot find bids_validator at ", scfg$compute_environment$bids_validator, ". You will be asked for this.")
-    gaps <- c(gaps, "compute_environment/bids_validator")
-    scfg$compute_environment$bids_validator <- NULL
-  }
-
-  if (!is.null(scfg$compute_environment$mriqc_container) && !checkmate::test_file_exists(scfg$compute_environment$mriqc_container)) {
-    message("Cannot find MRIQC container at ", scfg$compute_environment$mriqc_container, ". You will be asked for this.")
-    gaps <- c(gaps, "compute_environment/mriqc_container")
-    scfg$compute_environment$mriqc_container <- NULL
-  }
-
-  if (!is.null(scfg$compute_environment$aroma_container) && !checkmate::test_file_exists(scfg$compute_environment$aroma_container)) {
-    message("Cannot find AROMA container at ", scfg$compute_environment$aroma_container, ". You will be asked for this.")
-    gaps <- c(gaps, "compute_environment/aroma_container")
-    scfg$compute_environment$aroma_container <- NULL
-  }
-
-  # helper subfunction to convert NULL, empty list, or "" to character(0) for conformity
-  validate_char <- function(arg) {
-    if (is.null(arg) || identical(arg, list()) || length(arg) == 0L || arg[1L] == "") {
-      arg <- character(0)
-    }
-    return(arg)
-  }
-
-  # check memgb, nhours, ncores, cli_options, and sched_args for all jobs
-  validate_job_settings <- function(job_name) {
-    if (!checkmate::test_number(scfg[[job_name]]$memgb, lower=1, upper=1000)) {
-      message("Invalid memgb setting in ", job_name, ". We will ask you for a valid value")
-      gaps <- c(gaps, paste(job_name, "memgb", sep="/"))
-      scfg[[job_name]]$memgb <- NULL
-    }
-
-    if (!checkmate::test_number(scfg[[job_name]]$nhours, lower=1, upper=1000)) {
-      message("Invalid nhours setting in ", job_name, ". We will ask you for a valid value")
-      gaps <- c(gaps, paste(job_name, "nhours", sep="/"))
-      scfg[[job_name]]$nhours <- NULL
-    }
-
-    if (!checkmate::test_number(scfg[[job_name]]$ncores, lower = 1, upper = 250)) {
-      message("Invalid ncores setting in ", job_name, ". We will ask you for a valid value")
-      gaps <- c(gaps, paste(job_name, "ncores", sep = "/"))
-      scfg[[job_name]]$ncores <- NULL
-    }
-    
-    # conform cli_options to character(0) on empty
-    scfg[[job_name]]$cli_options <- validate_char(scfg[[job_name]]$cli_options)
-    scfg[[job_name]]$sched_args <- validate_char(scfg[[job_name]]$sched_args)
-    
-  }
-
-  # validate job settings
-  for (job in c("heudiconv", "fmriprep", "mriqc", "aroma", "postprocess")) {
-    validate_job_settings(job)
-  }
-
-  # Postprocessing settings validation
-  # Validate temporal filtering
-  if ("temporal_filter" %in% names(scfg$postprocess)) {
-    if (!checkmate::test_number(scfg$postprocess$temporal_filter$low_pass_hz, lower=0)) {
-      message("Missing low_pass_hz in $postprocess. You will be asked for this.")
-      gaps <- c(gaps, "postprocess/temporal_filter/low_pass_hz")
-      scfg$postprocess$temporal_filter$low_pass_hz <- NULL
-    }
-
-    if (!checkmate::test_number(scfg$postprocess$temporal_filter$high_pass_hz, lower = 0)) {
-      message("Missing high_pass_hz in $postprocess. You will be asked for this.")
-      gaps <- c(gaps, "postprocess/temporal_filter/high_pass_hz")
-      scfg$postprocess$temporal_filter$high_pass_hz <- NULL
-    }
-
-    if (!is.null(scfg$postprocess$temporal_filter$low_pass_hz) && !is.null(scfg$postprocess$temporal_filter$high_pass_hz) && 
-    scfg$postprocess$temporal_filter$high_pass_hz < scfg$postprocess$temporal_filter$low_pass_hz) {
-      message("high_pass_hz is greter than low_pass_hz $postprocess$temporal_filter. You will be asked to respecify valid values.")
-      if (!"postprocess/temporal_filter/low_pass_hz" %in% gaps) gaps <- c(gaps, "postprocess/temporal_filter/low_pass_hz")
-      if (!"postprocess/temporal_filter/high_pass_hz" %in% gaps) gaps <- c(gaps, "postprocess/temporal_filter/high_pass_hz")
-      scfg$postprocess$temporal_filter$low_pass_hz <- NULL
-      scfg$postprocess$temporal_filter$high_pass_hz <- NULL
-    }
-
-    if (!checkmate::test_string(scfg$postprocess$temporal_filter$prefix)) {
-      message("No valid prefix found for $postprocess$temporal_filter")
-      gaps <- c(gaps, "postprocess/temporal_filter/prefix")
-      scfg$postprocess$temporal_filter$prefix <- NULL
-    }
-  }
-
-  # Validate spatial smoothing
-  if ("spatial_smooth" %in% names(scfg$postprocess)) {
-    if (!checkmate::test_number(scfg$postprocess$spatial_smooth$fwhm_mm, lower = 0.1)) {
-      if (!quiet) message("Missing fwhm_mm in $postprocess$spatial_smooth. You will be asked for this.")
-      gaps <- c(gaps, "postprocess/spatial_smooth/fwhm_mm")
-      scfg$postprocess$spatial_smooth$fwhm_mm <- NULL
-    }
-    
-    if (!checkmate::test_string(scfg$postprocess$spatial_smooth$prefix)) {
-      message("No valid prefix found for $postprocess$spatial_smooth")
-      gaps <- c(gaps, "postprocess/spatial_smooth/prefix")
-      scfg$postprocess$spatial_smooth$prefix <- NULL
-    }
-  }
-
-  if ("intensity_normalize" %in% names(scfg$postprocess)) {
-    if (!checkmate::test_number(scfg$postprocess$intensity_normalize$global_median, lower = 0.1)) {
-      if (!quiet) message("Invalid global_median in $postprocess$intensity_normalize. You will be asked for this.")
-      gaps <- c(gaps, "postprocess/intensity_normalize/global_median")
-      scfg$postprocess$intensity_normalize$global_median <- NULL
-    }
-    
-    if (!checkmate::test_string(scfg$postprocess$intensity_normalize$prefix)) {
-      message("No valid prefix found for $postprocess$intensity_normalize")
-      gaps <- c(gaps, "postprocess/intensity_normalize/prefix")
-      scfg$postprocess$intensity_normalize$prefix <- NULL
-    }
-  }
-
-  if ("confound_calculate" %in% names(scfg$postprocess)) {
-    if (!checkmate::test_flag(scfg$postprocess$confound_calculate$demean)) {
-      if (!quiet) message("Invalid demean field in $postprocess$confound_calculate. You will be asked for this.")
-      gaps <- c(gaps, "postprocess/confound_calculate/demean")
-      scfg$postprocess$confound_calculate$demean <- NULL
-    }
-
-    if (!checkmate::test_string(scfg$postprocess$confound_calculate$output_file)) {
-      message("Invalid output_file field in $postprocess$confound_calculate")
-      gaps <- c(gaps, "postprocess/confound_calculate/output_file")
-      scfg$postprocess$confound_calculate$output_file <- NULL
-    }
-
-    if (!checkmate::test_character(scfg$postprocess$confound_calculate$columns)) {
-      message("Invalid columns field in $postprocess$confound_calculate")
-      gaps <- c(gaps, "postprocess/confound_calculate/columns")
-      scfg$postprocess$confound_calculate$columns <- NULL
-    }
-
-    if (!checkmate::test_character(scfg$postprocess$confound_calculate$noproc_columns)) {
-      message("Invalid noproc_columns field in $postprocess$confound_calculate")
-      gaps <- c(gaps, "postprocess/confound_calculate/noproc_columns")
-      scfg$postprocess$confound_calculate$noproc_columns <- NULL
-    }
-  }
-
-  # Validate AROMA settings
-  if ("apply_aroma" %in% names(scfg$postprocess)) {
-    if (!checkmate::test_flag(scfg$postprocess$apply_aroma$nonaggressive)) {
-      if (!quiet) message("Invalid nonaggressive field in $postprocess$apply_aroma You will be asked for this.")
-      gaps <- c(gaps, "postprocess/confound_calculate/demean")
-      scfg$postprocess$apply_aroma$nonaggressive <- NULL
-    }
-
-    if (!checkmate::test_string(scfg$postprocess$apply_aroma$prefix)) {
-      message("No valid prefix found for $postprocess$apply_aroma")
-      gaps <- c(gaps, "postprocess/apply_aroma/prefix")
-      scfg$postprocess$apply_aroma$prefix <- NULL
-    }
-  }
-
-  attr(scfg, "gaps") <- gaps
-
-  return(scfg)
-}
 
 #' Load a study configuration from a file
 #' @param file a YAML file containing a valid study configuration
@@ -236,7 +8,7 @@ load_study <- function(file = NULL) {
     stop("Cannot find file: ", file)
   } else {
     scfg <- read_yaml(file)
-    scfg <- validate_scfg(scfg)
+    scfg <- validate_study(scfg)
   }
 }
 
@@ -247,13 +19,18 @@ summary.bg_study_cfg <- function(x) {
 }
 
 #' Setup the processing pipeline for a new fMRI study
-#' @param file a YAML file specifying the location of an existing configuration file to be loaded
+#' @param input an existing `bg_study_cfg` object to be modified or a string 
+#'   specifying the location of an existing configuration YAML file to be loaded
 #' @importFrom yaml read_yaml
 #' @importFrom checkmate test_file_exists
 #' @export
-setup_study <- function(file = NULL) {
-  if (test_file_exists(file)) {
-    scfg <- read_yaml(file) # should validate... but should setup actually allow import of a file, or just load??
+setup_study <- function(input = NULL) {
+  if (checkmate::test_string(input)) {
+    scfg <- load_study(input)
+  } else if (inherits(input, "bg_study_cfg")) {
+    scfg <- input
+  } else if (!is.null(input)) {
+    stop("input must be a bg_study_cfg object or a string specifying the location of a YAML file")
   } else {
     scfg <- list()
   }
@@ -290,6 +67,10 @@ setup_study <- function(file = NULL) {
 
   # location of fmriprep outputs -- enforce that this must be within the project directory
   scfg$fmriprep_directory <- file.path(scfg$project_directory, "data_fmriprep")
+  if (!checkmate::test_directory_exists(scfg$fmriprep_directory)) {
+    create <- prompt_input(instruct = glue("The directory {scfg$fmriprep_directory} does not exist. Would you like me to create it?\n"), type = "flag")
+    if (create) dir.create(scfg$fmriprep_directory, recursive = TRUE) # should probably force this to happen
+  }
 
   scfg$scratch_directory <- prompt_input("Work directory: ",
     instruct = glue("
@@ -562,24 +343,6 @@ setup_aroma <- function(scfg, prompt_all = FALSE) {
   return(scfg)
 }
 
-#' helper function to extract numbers from number-like strings
-#' @param x a character vector containing number-like strings
-#' @return a numeric vector containing the parsed values
-#' @examples 
-#'   parse_number_base(c("1,234.56", "7,890", "12.34"))
-#' @keywords internal
-parse_number_base <- function(x) {
-  sapply(x, function(s) {
-    # Extract first number-like sequence: optional minus, digits, optional commas, optional decimal
-    match <- regmatches(s, regexpr("-?\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?", s, perl = TRUE))
-    if (length(match) == 0 || is.na(match)) {
-      return(NA_real_)
-    }
-    # Remove grouping commas and convert to numeric
-    as.numeric(gsub(",", "", match))
-  })
-}
-
 #' Helper function to obtain all subject and session directories from a root folder
 #' @param root The path to a root folder containing subject folders. 
 #' @param sub_regex A regex pattern to match the subject folders. Default: `"[0-9]+"`.
@@ -660,7 +423,8 @@ get_subject_dirs <- function(root = NULL, sub_regex = "[0-9]+", sub_id_match = "
           result[[length(result) + 1]] <- list(sub_id = subject_ids[ss], ses_id = ses_id, sub_dir = sub_dir,ses_dir = ses_dir)
         }
       } else {
-        warning(sprintf("No session directories found in '%s' matching '%s'", sub_dir, ses_regex))
+        # warning is too noisy -- just noting that a ses-regex was provided but only a subject directory was found
+        # warning(sprintf("No session directories found in '%s' matching '%s'", sub_dir, ses_regex))
         result[[length(result) + 1]] <- subject_row
       }
     }
@@ -670,106 +434,11 @@ get_subject_dirs <- function(root = NULL, sub_regex = "[0-9]+", sub_id_match = "
 }
 
 
-
-# old version that just retuns a vector of subject directories
- 
-# get_subject_dirs <- function(root = NULL, sub_regex = "[0-9]+", ses_regex = NULL, full.names = TRUE) {
-#   checkmate::assert_directory_exists(root)
-#   checkmate::assert_string(sub_regex)
-#   checkmate::assert_string(ses_regex, null.ok = TRUE)
-#   checkmate::assert_flag(full.names)
-
-#   # List directories in the root folder
-#   entries <- list.dirs(root, recursive = FALSE, full.names = FALSE)
-
-#   # Keep only those directories matching the subject regex
-#   subject_dirs <- entries[grepl(sub_regex, entries)]
-
-#   if (!is.null(ses_regex)) {
-#     found_dirs <- character()
-#     for (subj in subject_dirs) {
-#       ses_dirs <- list.dirs(file.path(root, subj), recursive = TRUE, full.names = FALSE)
-#       matched_ses <- ses_dirs[grepl(ses_regex, basename(ses_dirs))]
-
-#       if (length(matched_ses) > 0) {
-#         found_dirs <- c(found_dirs, file.path(subj, matched_ses))
-#       } else {
-#         warning(sprintf("No session directories found in '%s' matching '%s'; using subject directory.", subj, ses_regex))
-#         found_dirs <- c(found_dirs, subj)
-#       }
-#     }
-#     subject_dirs <- found_dirs
-#   } else {
-#     sub_ids <- NA
-#   }
-
-#   if (isTRUE(full.names)) subject_dirs <- file.path(root, subject_dirs)
-
-#   return(subject_dirs)
-# }
-
-#' helper function to extract capturing groups from a string
-#' @param strings a character vector containing the strings to be processed
-#' @param pattern a regex pattern to match the strings
-#' @param sep a character string to separate the captured groups. Default: `"_"`.
-#' @param groups a numeric vector specifying the indices of the capturing groups to be extracted.
-#'   Default: `NULL`, which extracts all capturing groups.
-#' @param ... additional arguments passed to `regexec` (e.g., `perl = TRUE`)
-#' @details This function uses the `regexec` and `regmatches` functions to extract
-#'   the capturing groups from the strings. The function returns a character vector
-#'   containing the captured groups. If no matches are found, `NA` is returned.
-#' @return a character vector containing the captured groups
-#' @keywords internal
-extract_capturing_groups <- function(strings, pattern, groups = NULL, sep = "_", ...) {
-  stopifnot(is.character(strings), is.character(pattern), length(pattern) == 1)
-
-  matches <- regexec(pattern, strings, ...)
-  reg_list <- regmatches(strings, matches)
-
-  # For each string, extract and paste selected groups
-  result <- vapply(reg_list, function(m) {
-    if (length(m) <= 1) return(NA_character_)
-    capture_groups <- m[-1]  # drop full match
-    if (!is.null(groups)) {
-      if (any(groups > length(capture_groups))) {
-        warning("Some requested group indices are out of range.")
-        return(NA_character_)
-      }
-      capture_groups <- capture_groups[groups]
-    }
-    paste(capture_groups, collapse = sep)
-  }, character(1))
-
-  return(result)
-}
-
-#strings <- c("sub-123_datavisit1", "sub-456_datatest1", "badstring")
-#pattern <- "sub-([0-9]+)_data((visit|test)1)"
-#pattern <- "([0-9]+)"
-#extract_capturing_groups(strings, pattern)
-
-
-
 # helper function to grab the subject id from a subject's bids directory
 get_sub_id <- function(bids_dir, regex="sub-[0-9]+") {
   checkmate::assert_directory_exists(bids_dir)
   
   sub("sub-", "", basename(bids_dir))
-}
-
-# helper function to populate defaults for config
-populate_defaults <- function(target = NULL, defaults) {
-  if (is.null(target)) target <- list()
-  checkmate::assert_list(defaults, names = "unique")
-
-  miss_fields <- setdiff(names(defaults), names(target))
-  if (length(miss_fields) > 0L) {
-    for (mm in miss_fields) {
-      target[[mm]] <- defaults[[mm]]
-    }
-  }
-
-  return(target)
 }
 
 get_compute_environment_from_file <- function(scfg) {

@@ -23,9 +23,13 @@ trap 'trap_job_failure fmriprep SIGQUIT' SIGQUIT
 ####
 #verify required arguments
 [ -z "$fmriprep_container" ] && echo "fmriprep_container not set. Exiting" && exit 1
+[ ! -f "$fmriprep_container" ] && echo "fmriprep_container $fmriprep_container not found. Exiting" && exit 1
+[ ! -r "$fmriprep_container" ] && echo "fmriprep_container $fmriprep_container not readable. Exiting" && exit 1
 [ -z "$loc_mrproc_root" ] && echo "loc_mrproc_root not set. Exiting." && exit 1
 [ -z "$loc_scratch" ] && echo "loc_scratch not set. Exiting." && exit 1
 [ -z "$loc_bids_root" ] && echo "loc_bids_root not set. Exiting." && exit 1
+[ ! -d "$loc_bids_root" ] && echo "loc_bids_root $loc_bids_root not found. Exiting" && exit 1
+[ ! -r "$loc_bids_root" ] && echo "loc_bids_root $loc_bids_root not readable. Exiting" && exit 1
 [ -z "$sub_id" ] && echo "sub_id not set. Exiting." && exit 1
 [[ "$debug_pipeline" == "TRUE" ]] && debug_pipeline=1 || debug_pipeline=0 # set debug_pipeline to 1 if it is set to TRUE, otherwise set it to 0
 
@@ -59,7 +63,7 @@ cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
 
 singularity_cmd="singularity run --cleanenv -B $loc_bids_root:/data -B $loc_scratch:/work $fmriprep_container"
 
-rel c $cmd_log Starting fmriprep for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the heudiconv command
+rel c $cmd_log Starting fmriprep for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the fmriprep command
 
 rel $rel_flag $singularity_cmd \
     "$loc_bids_root" "$loc_mrproc_root/" participant \
@@ -70,4 +74,4 @@ rel $rel_flag $singularity_cmd \
     
 [[ $? -eq 0 && $debug_pipeline -eq 0 ]] && date +"%Y-%m-%d %H:%M:%S" > ${out_dir}/.fmriprep_complete
 
-rel c $cmd_log Finished heudiconv for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the heudiconv command
+rel c $cmd_log Finished fmriprep for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the end of the fmriprep command

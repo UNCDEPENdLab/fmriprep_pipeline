@@ -102,8 +102,11 @@ run_study <- function(scfg, prompt = TRUE, debug = FALSE, force = FALSE) {
   if (nrow(subject_dirs) == 0L) {
     stop(glue("Cannot find any valida subject folders in bids directory: {scfg$bids_directory}"))
   } else {
-    for (ss in seq_len(nrow(subject_dirs))) {
-      process_subject(scfg, as.list(subject_dirs[ss, ]), steps)
+    # split data.frame by subject (some steps are subject-level, some are session-level)
+    subject_dirs <- split(subject_dirs, subject_dirs$sub_id)
+
+    for (ss in seq_along(subject_dirs)) {
+      process_subject(scfg, subject_dirs[[ss]], steps)
     }
   }
 }

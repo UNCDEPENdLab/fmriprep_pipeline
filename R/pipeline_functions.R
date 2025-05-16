@@ -1,4 +1,40 @@
-### 
+### Utility functions for the pipeline
+
+#' Helper function to allow a nested list to be traversed using a key string supporting nesting
+#' @param lst a list to be traversed
+#' @param key_strings a character vector of keys to traverse the list. Each key string should be
+#'   a single string with the keys separated by a separator (default is "/"). For example, "parent/child/grandchild"
+#'   would correspond to my_list$parent$child$grandchild
+#' @param sep a character string to separate the keys in the key strings. Default is "/"
+#' @param simplify a boolean indicating whether to simplify the output. Default is TRUE
+#' @return a named list of values corresponding to the keys in the key strings
+#' @keywords internal
+ of the form parent/child/grandchild where this corresponds to my_list$parent$child$granchild
+get_nested_values <- function(lst, key_strings, sep = "/", simplify = TRUE) {
+  split_keys_list <- strsplit(key_strings, sep)
+  
+  ret <- sapply(seq_along(split_keys_list), function(i) {
+    keys <- split_keys_list[[i]]
+    val <- lst
+    
+    for (j in seq_along(keys)) {
+      key <- keys[[j]]
+      
+      if (j == length(keys) && is.atomic(val) && !is.null(names(val))) {
+        # If last key and val is a named vector
+        return(val[[key]])
+      } else if (!is.list(val) || is.null(val[[key]])) {
+        # Otherwise, standard list traversal
+        return(NULL)
+      }
+      val <- val[[key]]
+    }
+    return(val)
+  }, USE.NAMES = FALSE, simplify = simplify)
+  names(ret) <- key_strings
+  return(ret)
+}
+
 
 #' helper function that takes a character vector of CLI arguments and replaces matching old values with
 #'   intended new values
@@ -125,7 +161,7 @@ set_cli_options <- function(args = NULL, new_values = NULL) {
   return(args)
 }
 
-
+# Pretty print a list with indentation and line wrapping
 pretty_print_list <- function(x, indent = 0, width = 80) {
   indent_str <- strrep("  ", indent)
 
@@ -424,10 +460,10 @@ validate_exists <- function(f, description="", directory=FALSE, prompt_change=FA
   checkmate::assert_flag(check_readable)
 
   if (directory) {
-    func <- checkmate::test_file_exists
+    func <- checkmate::test_directory_exists
     type <- "directory"
   } else {
-    func <- checkmate::test_directory_exists
+    func <- checkmate::test_file_exists
     type <- "file"
   }
 
@@ -456,6 +492,7 @@ validate_exists <- function(f, description="", directory=FALSE, prompt_change=FA
       } else {
         return(TRUE)
       }
+
     }
   } else {
     # some other non-character data type that somehow made it past check_atomic?
@@ -565,104 +602,61 @@ build_cli_args <- function(args=NULL, prompt="> ", instruct = "Enter arguments (
   }
 }
 
-# Load required libraries
-library(glue)
-library(stringr)
 
-# Helper: emulate envpass from bash
-envpass <- function(...) {
-  keys <- unlist(list(...))
-  kv_pairs <- sapply(keys, function(k) {
-    if (str_detect(k, '=')) {
-      return(k)
-    } else {
-      val <- Sys.getenv(k, unset = NA)
-      if (is.na(val)) message(glue("{k} is empty"))
-      return(glue("{k}='{val}'"))
-    }
-  })
-  paste(kv_pairs, collapse = ",")
-}
 
-# Helper: emulate build_qsub_string from bash
-build_qsub_string <- function(...) {
-  args <- unlist(list(...))
-  qsub_allocation <- Sys.getenv("qsub_allocation", unset = "open")
-  qsub_email <- Sys.getenv("qsub_email", unset = NA)
-  qsub_string <- glue("-A {qsub_allocation}")
+#' helper function to extract capturing groups from a string
+#' @param strings a character vector containing the strings to be processed
+#' @param pattern a regex pattern to match the strings
+#' @param sep a character string to separate the captured groups. Default: `"_"`.
+#' @param groups a numeric vector specifying the indices of the capturing groups to be extracted.
+#'   Default: `NULL`, which extracts all capturing groups.
+#' @param ... additional arguments passed to `regexec` (e.g., `perl = TRUE`)
+#' @details This function uses the `regexec` and `regmatches` functions to extract
+#'   the capturing groups from the strings. The function returns a character vector
+#'   containing the captured groups. If no matches are found, `NA` is returned.
+#' @return a character vector containing the captured groups
+#' @keywords internal
+extract_capturing_groups <- function(strings, pattern, groups = NULL, sep = "_", ...) {
+  stopifnot(is.character(strings), is.character(pattern), length(pattern) == 1)
 
-  if (!is.na(qsub_email)) {
-    qsub_string <- glue("{qsub_string} -M {qsub_email}")
-  }
+  matches <- regexec(pattern, strings, ...)
+  reg_list <- regmatches(strings, matches)
 
-  if (length(args) > 0) {
-    for (arg in args) {
-      if (str_detect(arg, '=')) {
-        qsub_string <- glue("{qsub_string} -l {arg}")
-      } else {
-        val <- Sys.getenv(arg, unset = NA)
-        if (!is.na(val)) {
-          qsub_string <- glue("{qsub_string} -l {arg}='{val}'")
-        }
+  # For each string, extract and paste selected groups
+  result <- vapply(reg_list, function(m) {
+    if (length(m) <= 1) return(NA_character_)
+    capture_groups <- m[-1]  # drop full match
+    if (!is.null(groups)) {
+      if (any(groups > length(capture_groups))) {
+        warning("Some requested group indices are out of range.")
+        return(NA_character_)
       }
+      capture_groups <- capture_groups[groups]
+    }
+    paste(capture_groups, collapse = sep)
+  }, character(1))
+
+  return(result)
+}
+
+#strings <- c("sub-123_datavisit1", "sub-456_datatest1", "badstring")
+#pattern <- "sub-([0-9]+)_data((visit|test)1)"
+#pattern <- "([0-9]+)"
+#extract_capturing_groups(strings, pattern)
+
+
+
+# helper function to populate defaults for config
+populate_defaults <- function(target = NULL, defaults) {
+  if (is.null(target)) target <- list()
+  checkmate::assert_list(defaults, names = "unique")
+
+  miss_fields <- setdiff(names(defaults), names(target))
+  if (length(miss_fields) > 0L) {
+    for (mm in miss_fields) {
+      target[[mm]] <- defaults[[mm]]
     }
   }
-  qsub_string
+
+  return(target)
 }
-
-# Helper: emulate rel from bash
-rel <- function(cmd, mode = NULL, substitute = NULL) {
-  log_file <- Sys.getenv("log_file", unset = NA)
-  comment <- "c" %in% mode
-  timeit <- "t" %in% mode
-  print_stdout <- "o" %in% mode
-
-  tic <- Sys.time()
-  output <- NULL
-
-  if (!is.na(log_file)) {
-    write(glue("{if (comment) '## ' else ''}{cmd}"), file = log_file, append = TRUE)
-  }
-
-  if (comment && !is.null(substitute)) {
-    return(substitute)
-  }
-
-  if (!comment) {
-    if (!print_stdout) cat(glue("{cmd}\n"))
-    output <- system(cmd, intern = print_stdout)
-    toc <- Sys.time()
-    if (timeit) {
-      dur <- round(difftime(toc, tic, units = "secs"), 2)
-      if (!is.na(log_file)) write(glue("# took {dur} seconds"), file = log_file, append = TRUE)
-    }
-    if (print_stdout) cat(output, sep = "\n")
-    return(output)
-  } else {
-    cat(glue("----  {cmd}\n"))
-  }
-}
-
-# Helper: emulate link_job_listings
-link_job_listings <- function(...) {
-  args <- unlist(list(...))
-  cleaned <- gsub("\\.torque01\\.[a-z0-9.]*edu", "", args)
-  paste0(cleaned, collapse = ",")
-}
-
-# Helper: emulate build_depend_string
-build_depend_string <- function(...) {
-  args <- unlist(list(...))
-  if (length(args) %% 2 != 0) stop("Expected even number of arguments: condition jobid ...")
-  res <- ""
-  for (i in seq(1, length(args), by = 2)) {
-    if (!is.null(args[i + 1]) && args[i + 1] != "\"\"") {
-      res <- paste0(res, glue("{args[i]}:{args[i + 1]}"), ",")
-    }
-  }
-  res <- str_remove(res, ",$")
-  if (res == "") "" else glue("-W depend={res}")
-}
-
-# The rest of your preprocess_subject script logic would go here and make use of the above helper functions.
-

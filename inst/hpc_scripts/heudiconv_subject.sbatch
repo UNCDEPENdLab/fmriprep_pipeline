@@ -24,12 +24,18 @@ trap 'trap_job_failure heudiconv SIGQUIT' SIGQUIT
 ####
 #verify necessary arguments
 [ -z "$heudiconv_container" ] && echo "heudiconv_container not set. Exiting" && exit 1
+[ ! -f "$heudiconv_container" ] && echo "heudiconv_container $heudiconv_container not found. Exiting" && exit 1
+[ ! -r "$heudiconv_container" ] && echo "heudiconv_container $heudiconv_container not readable. Exiting" && exit 1
 [ -z "$loc_sub_dicoms" ] && echo "loc_sub_dicoms not set. Exiting." && exit 1
 [ -z "$loc_bids_root" ] && echo "loc_bids_root not set. Exiting." && exit 1
 [ -z "$heudiconv_heuristic" ] && echo "No heudiconv_heuristic variable set." && exit 1
+[ ! -f "$heudiconv_heuristic" ] && echo "Heuristic file $heudiconv_heuristic not found." && exit 1
+[ ! -r "$heudiconv_heuristic" ] && echo "Heuristic file $heudiconv_heuristic not readable." && exit 1
 [ -z "$sub_id" ] && echo "sub_id not set. Exiting." && exit 1
 [[ "$debug_pipeline" == "TRUE" ]] && debug_pipeline=1 || debug_pipeline=0 # set debug_pipeline to 1 if it is set to TRUE, otherwise set it to 0
 # [ -z "$cmd_log" ] && cmd_log="${loc_bids_root}/heudiconv_${sub_id}${ses_str}.log"
+
+heuristic_dir=$(dirname "$heudiconv_heuristic")
 
 ###
 # handle multi-session setup
@@ -52,7 +58,7 @@ cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
 
 rel c $cmd_log Starting heudiconv for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the heudiconv command
 
-singularity_cmd="singularity run --cleanenv -B $loc_bids_root -B $loc_sub_dicoms $heudiconv_container"
+singularity_cmd="singularity run --cleanenv -B $loc_bids_root -B $loc_sub_dicoms -B $heuristic_dir $heudiconv_container"
 
 # we now use --files to specify the dicoms to convert rather than -d since we don't want to assume
 # the dicoms are in a specific directory structure (esp. in terms of level of nesting).
