@@ -61,7 +61,7 @@ cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
 #     "--fs-license-file {fslicense} {threads} {useAROMA} {other_opts}"
 # )
 
-singularity_cmd="singularity run --cleanenv -B "$loc_bids_root" -B $loc_scratch $fmriprep_container" -B "$loc_mrproc_root"
+singularity_cmd="singularity run --cleanenv -B '$loc_bids_root' -B '$loc_scratch' -B '$loc_mrproc_root' '$fmriprep_container'"
 
 rel c $cmd_log Starting fmriprep for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the fmriprep command
 
