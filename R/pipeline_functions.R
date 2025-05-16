@@ -195,10 +195,12 @@ pretty_print_list <- function(x, indent = 0, width = 80) {
 # pretty_print_list(defaults)
 
 
-setup_job <- function(scfg, job_name = NULL, prompt_all = FALSE, defaults = NULL) {
-  if (prompt_all || is.null(scfg[[job_name]]$memgb)) {
-    default_str <- ifelse(is.null(defaults$memgb), "", glue(" ({defaults$memgb} GB recommended)"))
-    scfg[[job_name]]$memgb <- prompt_input(instruct = glue("How many GB of memory should be used for running {job_name}?{default_str}"), type = "integer", lower = 1, upper = 1024, len = 1L, default=16L)
+setup_job <- function(scfg, job_name = NULL, defaults = NULL, fields = NULL) {
+  if (is.null(scfg[[job_name]]$memgb) || glue("{job_name}/memgb") %in% fields) {
+    scfg[[job_name]]$memgb <- prompt_input(
+      instruct = glue("How many GB of memory should be used for running {job_name}?"),
+      type = "numeric", lower = 1, upper = 1024, len = 1L, default = defaults$memgb
+    )
   }
 
   # if (prompt_all || is.null(scfg[[job_name]]$walltime)) {
@@ -206,29 +208,31 @@ setup_job <- function(scfg, job_name = NULL, prompt_all = FALSE, defaults = NULL
   #   scfg[[job_name]]$walltime <- hours_to_dhms(prompt_input(instruct = glue("How many hours should each run of {job_name} request? (min. 12 hours recommended)"), type = "integer", lower = 1, upper = 1000, len = 1L))
   # }
 
-  if (prompt_all || is.null(scfg[[job_name]]$nhours)) {
-    default_str <- ifelse(is.null(defaults$nhours), "", glue(" ({defaults$nhours} hours recommended)"))
-    scfg[[job_name]]$nhours <- prompt_input(instruct = glue("How many hours should each run of {job_name} request?{default_str}"), type = "numeric", lower = 0.1, upper = 1000, len = 1L)
+  if (is.null(scfg[[job_name]]$nhours) || glue("{job_name}/nhours") %in% fields) {
+    scfg[[job_name]]$nhours <- prompt_input(
+      instruct = glue("How many hours should each run of {job_name} request?"),
+      type = "numeric", lower = 0.1, upper = 1000, len = 1L, default = defaults$nhours
+    )
   }
 
-  if (prompt_all || is.null(scfg[[job_name]]$ncores)) {
-    default_str <- ifelse(is.null(defaults$ncores), "", glue(" ({defaults$ncores} recommended)"))
-    scfg[[job_name]]$ncores <- prompt_input(instruct = glue("How many cores/CPUs should each job request?{default_str}"), type = "integer", lower = 1, upper = 1000, len = 1L)
+  if (is.null(scfg[[job_name]]$ncores) || glue("{job_name}/ncores") %in% fields) {
+    scfg[[job_name]]$ncores <- prompt_input(
+      instruct = glue("How many cores/CPUs should each job request?"),
+      type = "integer", lower = 1, upper = 1000, len = 1L, default = defaults$ncores
+    )
   }
 
-  if (prompt_all || is.null(scfg[[job_name]]$cli_options)) {
+  if (is.null(scfg[[job_name]]$cli_options) || glue("{job_name}/cli_options") %in% fields) {
     scfg[[job_name]]$cli_options <- build_cli_args(args = scfg[[job_name]]$cli_options, instruct = glue("Specify any other {job_name} command line arguments. Press Enter when done."))
   }
 
-  if (prompt_all || is.null(scfg[[job_name]]$sched_args)) {
+  if (is.null(scfg[[job_name]]$sched_args) || glue("{job_name}/sched_args") %in% fields) {
     sched_queue <- ifelse(!is.null(scfg$compute_environment$scheduler) && scfg$compute_environment$scheduler == "torque", "#PBS", "#SBATCH")
     scfg[[job_name]]$sched_args <- build_cli_args(args = scfg[[job_name]]$sched_args, instruct = glue("Specify any other arguments to pass to the job scheduler These usually begin {sched_queue}. Press Enter when done."))
   }
 
   return(scfg)
 }
-
-# test_scfg <- setup_job(list(), "fmriprep", defaults = list(memgb = 32, nhours = 48, ncores = 6))
 
 
 pretty_arg <- function(x, width = 80) {

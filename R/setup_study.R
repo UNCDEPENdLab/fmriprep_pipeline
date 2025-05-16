@@ -1,4 +1,3 @@
-
 #' Load a study configuration from a file
 #' @param file a YAML file containing a valid study configuration
 #' @importFrom yaml read_yaml
@@ -19,12 +18,13 @@ summary.bg_study_cfg <- function(x) {
 }
 
 #' Setup the processing pipeline for a new fMRI study
-#' @param input an existing `bg_study_cfg` object to be modified or a string 
+#' @param input an existing `bg_study_cfg` object to be modified or a string
 #'   specifying the location of an existing configuration YAML file to be loaded
+#' @param fields a character vector of fields to be prompted for. If `NULL`, all fields will be prompted for.
 #' @importFrom yaml read_yaml
 #' @importFrom checkmate test_file_exists
 #' @export
-setup_study <- function(input = NULL) {
+setup_study <- function(input = NULL, fields = NULL) {
   if (checkmate::test_string(input)) {
     scfg <- load_study(input)
   } else if (inherits(input, "bg_study_cfg")) {
@@ -39,20 +39,29 @@ setup_study <- function(input = NULL) {
     class(scfg) <- c(class(scfg), "bg_study_cfg")
   }
 
-  if (is.null(scfg$project_name)) scfg$project_name <- prompt_input("What is the name of your project?", type = "character")
+  if (is.null(scfg$project_directory) || "project_name" %in% fields) {
+    scfg$project_name <- prompt_input("What is the name of your project?", type = "character")
+  }
 
-  scfg$project_directory <- prompt_input("What is the root directory where project files will be stored?", type = "character")
+  if (is.null(scfg$project_directory) || "project_directory" %in% fields) {
+    scfg$project_directory <- prompt_input("What is the root directory where project files will be stored?", type = "character")
+  }
+
   if (!checkmate::test_directory_exists(scfg$project_directory)) {
     create <- prompt_input(instruct = glue("The directory {scfg$project_directory} does not exist. Would you like me to create it?\n"), type = "flag")
     if (create) dir.create(scfg$project_directory, recursive = TRUE)
   }
+
   if (!checkmate::test_directory_exists(scfg$project_directory, "r")) {
     warning(glue("You seem not to have read permission to: {scfg$project_directory}. This could cause problems in trying to run anything!"))
   }
 
   # location of DICOMs
   # /nas/longleaf/home/willasc/repos/clpipe/tests/temp/clpipe_dir0/data_DICOMs
-  scfg$dicom_directory <- prompt_input("Where are DICOM files files stored?", type = "character")
+  if (is.null(scfg$dicom_directory) || "dicom_directory" %in% fields) {
+    scfg$dicom_directory <- prompt_input("Where are DICOM files files stored?", type = "character")
+  }
+
   if (!checkmate::test_directory_exists(scfg$dicom_directory)) {
     create <- prompt_input(instruct = glue("The directory {scfg$dicom_directory} does not exist. Would you like me to create it?\n"), type = "flag")
     if (create) dir.create(scfg$dicom_directory, recursive = TRUE)
@@ -72,46 +81,53 @@ setup_study <- function(input = NULL) {
     if (create) dir.create(scfg$fmriprep_directory, recursive = TRUE) # should probably force this to happen
   }
 
-  scfg$scratch_directory <- prompt_input("Work directory: ",
-    instruct = glue("
-    \nfmriprep uses a lot of disk space for processing intermediate files. It's best if these
-    are written to a scratch/temporary directory that is cleared regularly so that you don't
-    use up precious disk space for unnecessary files. Please indicate where these intermediate
-    file should be written.\n
-  "), type = "character")
+  if (is.null(scfg$scratch_directory) || "scratch_directory" %in% fields) {
+    scfg$scratch_directory <- prompt_input("Work directory: ",
+      instruct = glue("
+      \nfmriprep uses a lot of disk space for processing intermediate files. It's best if these
+      are written to a scratch/temporary directory that is cleared regularly so that you don't
+      use up precious disk space for unnecessary files. Please indicate where these intermediate
+      file should be written.\n
+      "), type = "character"
+    )
+  }
+
   if (!checkmate::test_directory_exists(scfg$scratch_directory)) {
     create <- prompt_input(instruct = glue("The directory {scfg$scratch_directory} does not exist. Would you like me to create it?\n"), type = "flag")
     if (create) dir.create(scfg$scratch_directory, recursive = TRUE)
   }
 
-  scfg$run_aroma <- prompt_input("Run AROMA?",
-    instruct = glue("
+  if (is.null(scfg$run_aroma) || "run_aroma" %in% fields) {
+    scfg$run_aroma <- prompt_input("Run AROMA?",
+      instruct = glue("
       \nAs of v24, fmriprep has now removed ICA-AROMA from its codebase, splitting this off to
       a separate BIDS app called fmripost-aroma. Do you want to run the fMRI data through ICA-AROMA?
       If so, you will subsequently be asked for the location of an ICA-AROMA container file. Note that
       saying 'yes' to this, only runs AROMA, but does not remove motion-related components from the fMRI
       timeseries. That is a postprocessing decision, which you will be asked about in that context.\n
       "), type = "flag"
-  )
-
-  scfg <- setup_compute_environment(scfg)
+    )
+  }
 
   # logging
-  scfg$log_txt <- prompt_input("Create subject-level logs?",
-    instruct = glue("
+  if (is.null(scfg$log_txt) || "log_txt" %in% fields) {
+    scfg$log_txt <- prompt_input("Create subject-level logs?",
+      instruct = glue("
       The package can write plain-text logs to each subject's sub-<id> directory.
       These contain messages related to job submission and job status.
       We strongly recommend these for tracking and debugging purposes.
       ", .trim = FALSE), type = "flag"
-  )
+    )
+  }
 
   # run through configuration of each step
-  scfg <- setup_bids_conversion(scfg)
-  scfg <- setup_bids_validation(scfg)
-  scfg <- setup_fmriprep(scfg)
-  scfg <- setup_mriqc(scfg)
-  if (isTRUE(scfg$run_aroma)) scfg <- setup_aroma(scfg)
-  scfg <- setup_postprocessing(scfg)
+  scfg <- setup_compute_environment(scfg, fields)
+  scfg <- setup_bids_conversion(scfg, fields)
+  scfg <- setup_bids_validation(scfg, fields)
+  scfg <- setup_fmriprep(scfg, fields)
+  scfg <- setup_mriqc(scfg, fields)
+  if (isTRUE(scfg$run_aroma)) scfg <- setup_aroma(scfg, fields)
+  scfg <- setup_postprocessing(scfg, fields)
 
   return(scfg)
 }
@@ -120,7 +136,7 @@ setup_study <- function(input = NULL) {
 #' @param scfg a study configuration object, as produced by `load_study` or `setup_study`
 #' @return a modified version of `scfg` with `$fmriprep` populated
 #' @keywords internal
-setup_fmriprep <- function(scfg = NULL, prompt_all = FALSE) {
+setup_fmriprep <- function(scfg = NULL, fields = NULL) {
   # https://fmriprep.org/en/stable/usage.html
   # [--omp-nthreads OMP_NTHREADS] [--mem MEMORY_MB] [--low-mem]  [--nprocs NPROCS]
   defaults <- list(
@@ -146,7 +162,7 @@ setup_fmriprep <- function(scfg = NULL, prompt_all = FALSE) {
 
 }
 
-setup_bids_validation <- function(scfg) {
+setup_bids_validation <- function(scfg, fields=NULL) {
   defaults <- list(
     memgb = 32,
     nhours = 2,
@@ -157,8 +173,9 @@ setup_bids_validation <- function(scfg) {
 
   scfg <- setup_job(scfg, "bids_validation", defaults = defaults)
 
-  scfg$bids_validation$outfile <- prompt_input(
-    instruct = glue("
+  if (is.null(scfg$bids_validation$outfile) || "bids_validation/outfile" %in% fields) {
+    scfg$bids_validation$outfile <- prompt_input(
+      instruct = glue("
       \nWhat should be the name of the output file created by bids_validator? The default is bids_validator_output.html
       You can also include the subject and session IDs in the filename by using the following
       placeholders: {sub_id} and {ses_id}. For example, bids_validation_sub-{sub_id}_ses-{ses_id}.html will substitute
@@ -166,9 +183,10 @@ setup_bids_validation <- function(scfg) {
       directory for all subjects and sessions, but still want to be able to identify which file belongs to which subject.
       \n
     "),
-    prompt = "What is the name of the output file for bids-validator?",
-    type = "character", default = "bids_validator_output.html"
-  )
+      prompt = "What is the name of the output file for bids-validator?",
+      type = "character", default = "bids_validator_output.html"
+    )
+  }
 
   return(scfg)
 }
@@ -177,7 +195,7 @@ setup_bids_validation <- function(scfg) {
 #' @param scfg a study configuration object, as produced by `load_study` or `setup_study`
 #' @return a modified version of `scfg` with `$mriqc` populated
 #' @keywords internal
-setup_mriqc <- function(scfg) {
+setup_mriqc <- function(scfg, fields = NULL) {
   defaults <- list(
     memgb = 32,
     nhours = 12,
@@ -246,18 +264,21 @@ setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
     please see some examples here: https://github.com/nipy/heudiconv/tree/master/heudiconv/heuristics.\n\n
     "))
 
-  scfg$heudiconv$sub_regex <- prompt_input(
-    instruct = glue("
+  if (is.null(scfg$heudiconv$sub_regex) || "heudiconv/sub_regex" %in% fields) {
+    scfg$heudiconv$sub_regex <- prompt_input(
+      instruct = glue("
       \nWhat is the regex pattern for the subject IDs? This is used to identify the subject folders
       within the DICOM directory. The default is sub-[0-9]+, which matches sub-001, sub-002, etc.
       If you have a different naming scheme, please specify it here.\n
     "),
-    prompt = "What is the regex pattern for the subject IDs?",
-    type = "character", default = "sub-[0-9]+"
-  )
+      prompt = "What is the regex pattern for the subject IDs?",
+      type = "character", default = "sub-[0-9]+"
+    )
+  }
 
-   scfg$heudiconv$sub_id_match <- prompt_input(
-    instruct = glue("
+   if (is.null(scfg$heudiconv$sub_id_match) || "heudiconv/sub_id_match" %in% fields) {
+     scfg$heudiconv$sub_id_match <- prompt_input(
+       instruct = glue("
       \nWhat is the regex pattern for extracting the ID from the subject folder name? You
       can use multiple capturing groups if the ID has multiple parts. The default is ([0-9]+),
       which extracts the first number-like sequence from the folder name. For example, if your
@@ -265,20 +286,23 @@ setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
       '001', the ID will be '001'. If the entire folder name is the subject ID, such as '001ra_2May2024',
       the id matching expression should be (.+), which matches all characters in the folder name.\n
     "),
-    prompt = "What is the regex pattern for extracting the subject ID from the folder name?",
-    type = "character", default = "(.+)"
-  )
+       prompt = "What is the regex pattern for extracting the subject ID from the folder name?",
+       type = "character", default = "(.+)"
+     )
+   }
 
-  scfg$heudiconv$ses_regex <- prompt_input(
-    instruct = glue("
+  if (is.null(scfg$heudiconv$ses_regex) || "heudiconv/ses_regex" %in% fields) {
+    scfg$heudiconv$ses_regex <- prompt_input(
+      instruct = glue("
       If you have multisession data, specify the the regex pattern for session IDs within the subject folders.
       If you don't have multisession data, just press Enter to skip this step.
     ", .trim = FALSE),
-    prompt = "What is the regex pattern for the session IDs?",
-    type = "character", required = FALSE
-  )
+      prompt = "What is the regex pattern for the session IDs?",
+      type = "character", required = FALSE
+    )
+  }
 
-  if (!is.na(scfg$heudiconv$ses_regex)) {
+  if (!is.na(scfg$heudiconv$ses_regex) && (is.null(scfg$heudiconv$ses_id_match) || "heudiconv/ses_id_match" %in% fields)) {
     scfg$heudiconv$ses_id_match <- prompt_input(
     instruct = glue("
       \nWhat is the regex pattern for extracting the ID from the subject folder name? You
@@ -296,20 +320,27 @@ setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
   }
   
 
-  scfg$heudiconv$heuristic_file <- prompt_input(instruct = glue("What is the location of the heudiconv heuristic file?"), type = "file")
+  if (is.null(scfg$heudiconv$heuristic_file) || "heudiconv/heuristic_file" %in% fields) {
+    scfg$heudiconv$heuristic_file <- prompt_input(instruct = glue("What is the location of the heudiconv heuristic file?"), type = "file")
+  }
 
-  scfg$heudiconv$overwrite <- prompt_input(instruct = glue("Should existing BIDS files be overwritten by heudiconv?"), type = "flag", default = TRUE)
-  scfg$heudiconv$clear_cache <- prompt_input(
-    instruct = glue("Heudiconv caches its matching results inside the root of the BIDS folder in a hidden
+  if (is.null(scfg$heudiconv$overwrite) || "heudiconv/overwrite" %in% fields) {
+    scfg$heudiconv$overwrite <- prompt_input(instruct = glue("Should existing BIDS files be overwritten by heudiconv?"), type = "flag", default = TRUE)
+  }
+  if (is.null(scfg$heudiconv$clear_cache) || "heudiconv/clear_cache" %in% fields) {
+    scfg$heudiconv$clear_cache <- prompt_input(
+      instruct = glue("Heudiconv caches its matching results inside the root of the BIDS folder in a hidden
     directory called .heudiconv. This provides a record of what heudiconv did for each subject conversion.
     It also speeds up conversions in future if you reprocess data. That said, if you modify the heuristic file,
     the cache can interfere because it will use the old heuristic file to match DICOMs to BIDS.
     If you want to clear the cache, say 'yes' here. If you want to keep the cache, say 'no'.
     ", .trim = FALSE),
-    prompt = glue("Should the heudiconv cache be cleared?"),
-    type = "flag", default = FALSE
-  )
+      prompt = glue("Should the heudiconv cache be cleared?"),
+      type = "flag", default = FALSE
+    )
+  }
   
+  if (is.null(scfg$heudiconv$validate_bids) || "heudiconv/validate_bids" %in% fields) {
   scfg$heudiconv$validate_bids <- prompt_input(
     instruct = glue("
       Should the BIDS folder be validated after conversion? This requires the bids-validator program to be installed.
@@ -318,6 +349,7 @@ setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
     "),
     type = "flag", default = TRUE
   )
+  }
 
   scfg <- setup_job(scfg, "heudiconv", defaults = defaults)
 
@@ -328,7 +360,7 @@ setup_bids_conversion <- function(scfg, prompt_all = FALSE) {
 #' @param scfg a study configuration object, as produced by `load_study` or `setup_study`
 #' @return a modified version of `scfg` with `$aroma` populated
 #' @keywords internal
-setup_aroma <- function(scfg, prompt_all = FALSE) {
+setup_aroma <- function(scfg, fields = NULL) {
   defaults <- list(
     memgb = 32,
     nhours = 2,
@@ -480,13 +512,13 @@ get_compute_environment_from_file <- function(scfg) {
 #' @return a modified version of `scfg` with `$compute_environment` populated
 #' @keywords internal
 #' @importFrom checkmate assert_list
-setup_compute_environment <- function(scfg = list()) {
+setup_compute_environment <- function(scfg = list(), fields = NULL) {
   checkmate::assert_list(scfg)
 
   # if empty, allow population from external file
   scfg <- get_compute_environment_from_file(scfg)
 
-  if (is.null(scfg$compute_environment$scheduler) || !checkmate::test_subset(scfg$compute_environment$scheduler, c("slurm", "torque"))) {
+  if (is.null(scfg$compute_environment$scheduler) || "compute_environment/scheduler" %in% fields || !checkmate::test_subset(scfg$compute_environment$scheduler, c("slurm", "torque"))) {
     scfg$compute_environment$scheduler <- prompt_input("Scheduler (slurm/torque): ",
       instruct = "The pipeline currently runs on TORQUE (aka qsub) and SLURM clusters.\nWhich will you use?",
       type = "character", len = 1L, among = c("slurm", "torque")
@@ -494,7 +526,7 @@ setup_compute_environment <- function(scfg = list()) {
   }
 
   # location of fmriprep container
-  if (!validate_exists(scfg$compute_environment$fmriprep_container, description = "fmriprep container", prompt_change = TRUE)) {
+  if (!validate_exists(scfg$compute_environment$fmriprep_container) || "compute_environment/fmriprep_container" %in% fields) {
     scfg$compute_environment$fmriprep_container <- prompt_input(
       instruct = glue("
       The pipeline depends on having a working fmriprep container (docker or singularity).
@@ -502,12 +534,13 @@ setup_compute_environment <- function(scfg = list()) {
         https://fmriprep.org/en/stable/installation.html#containerized-execution-docker-and-singularity
     ", .trim = FALSE),
       prompt = "Location of fmriprep container: ",
-      type = "file"
+      type = "file",
+      default = scfg$compute_environment$fmriprep_container
     )
   }
 
   # location of heudiconv container
-  if (!validate_exists(scfg$compute_environment$heudiconv_container, description = "heudiconv container", prompt_change = TRUE)) {
+  if (!validate_exists(scfg$compute_environment$heudiconv_container) || "compute_environment/heudiconv_container" %in% fields) {
     scfg$compute_environment$heudiconv_container <- prompt_input(
       instruct = glue("
       The pipeline depends on having a working heudiconv container (docker or singularity).
@@ -515,12 +548,13 @@ setup_compute_environment <- function(scfg = list()) {
         https://heudiconv.readthedocs.io/en/latest/installation.html#install-container
     ", .trim = FALSE),
       prompt = "Location of heudiconv container: ",
-      type = "file"
+      type = "file",
+      default = scfg$compute_environment$heudiconv_container
     )
   }
 
   # location of bids-validator binary
-  if (!validate_exists(scfg$compute_environment$bids_validator, description = "bids-validator program", prompt_change = TRUE)) {
+  if (!validate_exists(scfg$compute_environment$bids_validator) || "compute_environment/bids_validator" %in% fields) {
     scfg$compute_environment$bids_validator <- prompt_input(
       instruct = glue("
       After BIDS conversion, the pipeline can pass resulting BIDS folders to bids-validator to verify that 
@@ -532,12 +566,13 @@ setup_compute_environment <- function(scfg = list()) {
       https://bids-validator.readthedocs.io/en/stable/user_guide/command-line.html.
     ", .trim = FALSE),
       prompt = "Location of bids-validator program: ",
-      type = "file", required = FALSE
+      type = "file", required = ,
+      default = scfg$compute_environment$bids_validator
     )
   }
 
   # location of mriqc container
-  if (!validate_exists(scfg$compute_environment$mriqc_container, description = "mriqc container", prompt_change = TRUE)) {
+  if (!validate_exists(scfg$compute_environment$mriqc_container) || "compute_environment/mriqc_container" %in% fields) {
     scfg$compute_environment$mriqc_container <- prompt_input(
       instruct = glue("
       The pipeline can use MRIQC to produce automated QC reports. This is suggested, but not required.
@@ -546,12 +581,13 @@ setup_compute_environment <- function(scfg = list()) {
         singularity build /location/to/mriqc-latest.simg docker://nipreps/mriqc:latest
     ", .trim = FALSE),
       prompt = "Location of mriqc container: ",
-      type = "file", required = FALSE
+      type = "file", required = FALSE,
+      default = scfg$compute_environment$mriqc_container
     )
   }
 
   # location of ICA-AROMA fMRIprep container
-  if (!validate_exists(scfg$compute_environment$aroma_container, description = "ICA-AROMA container", prompt_change = TRUE)) {
+  if (!validate_exists(scfg$compute_environment$aroma_container) || "compute_environment/aroma_container" %in% fields) {
     scfg$compute_environment$aroma_container <- prompt_input(
       instruct = glue("
       The pipeline can use ICA-AROMA to denoise fMRI timeseries. As descried in Pruim et al. (2015), this
@@ -562,7 +598,8 @@ setup_compute_environment <- function(scfg = list()) {
       This is required if you say 'yes' to running AROMA during study setup.
     ", .trim = FALSE),
       prompt = "Location of ICA-AROMA container: ",
-      type = "file", required = FALSE
+      type = "file", required = FALSE,
+      default = scfg$compute_environment$aroma_container
     )
   }
 
