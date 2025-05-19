@@ -20,7 +20,7 @@ validate_study <- function(scfg = list(), quiet = FALSE) {
     gaps <- c(gaps, "project_name")
   }
 
-  required_dirs <- c("project_directory", "dicom_directory", "bids_directory", "fmriprep_directory", "scratch_directory")
+  required_dirs <- c("project_directory", "dicom_directory", "bids_directory", "fmriprep_directory", "scratch_directory", "templateflow_home")
   for (rr in required_dirs) {
     if (!checkmate::test_directory_exists(scfg[[rr]])) {
       message("Config file is missing valid ", rr, ".")
@@ -28,7 +28,7 @@ validate_study <- function(scfg = list(), quiet = FALSE) {
     }
   }
 
-  required_files <- c("compute_environment/fmriprep_container", "compute_environment/heudiconv_container", "heudiconv/heuristic_file")
+  required_files <- c("compute_environment/fmriprep_container", "compute_environment/heudiconv_container", "heudiconv/heuristic_file", "fmriprep/fs_license_file")
   for (rr in required_files) {
     if (!checkmate::test_file_exists(get_nested_values(scfg, rr))) {
       message("Config file is missing valid ", rr, ". You will be asked for this.")
@@ -94,6 +94,20 @@ validate_study <- function(scfg = list(), quiet = FALSE) {
     validate_job_settings(job)
   }
 
+  # validate heudiconv sub_regex
+  if (!checkmate::test_string(scfg$heudiconv$sub_regex)) {
+    message("Missing sub_regex in $heudiconv. You will be asked for this.")
+    gaps <- c(gaps, "heudiconv/sub_regex")
+    scfg$heudiconv$sub_regex <- NULL
+  }
+
+  # validate heudiconv sub_id_match
+  if (!checkmate::test_string(scfg$heudiconv$sub_id_match)) {
+    message("Missing sub_id_match in $heudiconv. You will be asked for this.")
+    gaps <- c(gaps, "heudiconv/sub_id_match")
+    scfg$heudiconv$sub_id_match <- NULL
+  }
+  
   # Postprocessing settings validation (function in setup_postproc.R)
   postprocess_result <- validate_postprocess_config(scfg$postprocess, quiet)
   scfg$postprocess <- postprocess_result$postprocess

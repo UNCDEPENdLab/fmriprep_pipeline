@@ -74,6 +74,12 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
     return(job_id)
   }
 
+  ## Ensure that log directory exists
+  dir.create(file.path(scfg$log_directory, paste("sub", sub_id, sep = "-")), showWarnings = FALSE, recursive = TRUE)
+  lg$info(glue("Processing subject {sub_id} with {nrow(sub_cfg)} sessions."))
+  # lg$info(glue("Processing steps: {glue_collapse(names(steps), sep = ', ')}"))
+  lg$info(glue("BIDS directory: {bids_sub_dir}"))
+
   ## Handle BIDS conversion -- session-level
   n_inputs <- nrow(sub_cfg)
 
@@ -132,7 +138,7 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
 submit_bids_conversion <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, parent_ids = NULL) {
   # heudiconv  --files dicom/219/itbs/*/*.dcm -o Nifti -f Nifti/code/heuristic1.py -s 219 -ss itbs -c dcm2niix -b --minmeta --overwrite
 
-  jobid_str <- if (!is.null(ses_id) || is.na(ses_id[1L])) {
+  jobid_str <- if (!is.null(ses_id) && !is.na(ses_id[1L])) {
     glue("heudiconv-sub-{sub_id}_ses-{ses_id}")
   } else {
     glue("heudiconv-sub-{sub_id}")
@@ -168,7 +174,7 @@ submit_bids_conversion <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id =
 
 
 submit_bids_validation <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, parent_ids = NULL) {
-  jobid_str <- if (!is.null(ses_id) || is.na(ses_id[1L])) {
+  jobid_str <- if (!is.null(ses_id) && !is.na(ses_id[1L])) {
     glue("bids_validation-sub-{sub_id}_ses-{ses_id}")
   } else {
     glue("bids_validation-sub-{sub_id}")
@@ -201,7 +207,13 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
   checkmate::assert_list(scfg)
   checkmate::assert_character(parent_ids, null.ok = TRUE)
 
-  jobid_str <- if (!is.null(ses_id) || is.na(ses_id[1L])) {
+  if (!validate_exists(scfg$compute_environment$fmriprep_container)) {
+    #lg$debug("Unable to submit fmriprep for {sub_dir} because $compute_environment$fmriprep_container is missing.")
+    warning("Unable to submit fmriprep for {sub_dir} because $compute_environment$fmriprep_container is missing.")
+    return(NULL)
+  }
+
+  jobid_str <- if (!is.null(ses_id) && !is.na(ses_id[1L])) {
     glue("fmriprep-sub-{sub_id}_ses-{ses_id}")
   } else {
     glue("fmriprep-sub-{sub_id}")
@@ -209,20 +221,28 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
 
   #lg <- get_subject_logger(sub_dir)
 
-  if (!validate_exists(scfg$compute_environment$fmriprep_container)) {
-    #lg$debug("Unable to submit fmriprep for {sub_dir} because $compute_environment$fmriprep_container is missing.")
-    warning("Unable to submit fmriprep for {sub_dir} because $compute_environment$fmriprep_container is missing.")
-    return(NULL)
-  }
-
   script <- get_job_script(scfg, "fmriprep")
   sched_args <- get_job_sched_args(scfg, "fmriprep")
+  sched_args <- set_cli_options(
+    sched_args,
+    c(glue("--job-name={jobid_str}"), 
+    glue("--output={scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.out"),
+    glue("--error={scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.err"))
+  )
+
+  if (isTRUE(scfg$run_aroma) && !grepl("MNI152NLin6Asym:res-2", scfg$fmriprep$output_spaces, fixed = TRUE)) {
+    message("Adding MNI152NLin6Asym:res-2 to output spaces for fmriprep to allow AROMA to run.")
+    scfg$fmriprep$output_spaces <- paste(scfg$fmriprep$output_spaces, "MNI152NLin6Asym:res-2")
+  }
 
   cli_options <- set_cli_options(scfg$fmriprep$cli_options, c(
     glue("--nthreads {scfg$fmriprep$ncores}"),
     glue("--omp-nthreads {scfg$fmriprep$ncores}"),
     glue("--participant_label {sub_id}"),
-    glue("-w {scfg$scratch_directory}")
+    glue("-w {scfg$scratch_directory}"),
+    glue("--fs-license-file {scfg$fmriprep$fs_license_file}"),
+    glue("--output-spaces {scfg$fmriprep$output_spaces}"),
+    glue("--mem {scfg$fmriprep$memgb*1000}") # convert to MB
   ))
 
   env_variables <- c(
@@ -232,6 +252,8 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
     loc_bids_root = scfg$bids_directory,
     loc_mrproc_root = scfg$fmriprep_directory,
     loc_scratch = scfg$scratch_directory,
+    templateflow_home = scfg$templateflow_home,
+    fs_license_file = scfg$fmriprep$fs_license_file,
     debug_pipeline = scfg$debug,
     cli_options = cli_options,
     pkg_dir=system.file(package = "BGprocess")
@@ -247,9 +269,79 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
 }
 
 
+submit_aroma <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
+   if (!validate_exists(scfg$compute_environment$aroma_container)) {
+    message(glue("Skipping AROMA in {sub_dir} because could not find AROMA container {scfg$compute_environment$aroma_container}"))
+    return(NULL)
+  }
+
+  # TODO: unclear whether we need run_aroma and "aroma" in steps...
+  if (!isTRUE(scfg$run_aroma)) {
+    message(glue("Skipping AROMA in {sub_dir} because run_aroma is FALSE"))
+    return(NULL)
+  }
+
+  jobid_str <- if (!is.null(ses_id) && !is.na(ses_id[1L])) {
+    glue("aroma-sub-{sub_id}_ses-{ses_id}")
+  } else {
+    glue("aroma-sub-{sub_id}")
+  }
+
+  #lg <- get_subject_logger(sub_dir)
+
+  script <- get_job_script(scfg, "aroma")
+  sched_args <- get_job_sched_args(scfg, "aroma")
+  sched_args <- set_cli_options(
+    sched_args,
+    c(glue("--job-name={jobid_str}"), 
+    glue("--output={scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.out"),
+    glue("--error={scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.err"))
+  )
+
+  if (isTRUE(scfg$run_aroma) && !grepl("MNI152NLin6Asym:res-2", scfg$fmriprep$output_spaces, fixed = TRUE)) {
+    message("Adding MNI152NLin6Asym:res-2 to output spaces for fmriprep to allow AROMA to run.")
+    scfg$fmriprep$output_spaces <- paste(scfg$fmriprep$output_spaces, "MNI152NLin6Asym:res-2")
+  }
+
+  # for now, inherit key options from fmriprep rather than asking user to respecify
+  # https://fmripost-aroma.readthedocs.io/latest/usage.html
+
+  cli_options <- set_cli_options(scfg$aroma$cli_options, c(
+    glue("--nthreads {scfg$aroma$ncores}"),
+    glue("--omp-nthreads {scfg$aroma$ncores}"),
+    glue("--participant_label {sub_id}"),
+    glue("-w {scfg$scratch_directory}"),
+    glue("--output-spaces {scfg$fmriprep$output_spaces}"),
+    glue("--mem {scfg$aroma$memgb*1000}") # convert to MB
+  ))
+
+  env_variables <- c(
+    aroma_container = scfg$compute_environment$aroma_container,
+    sub_id = sub_id,
+    ses_id = ses_id,
+    loc_bids_root = scfg$bids_directory,
+    loc_mrproc_root = scfg$fmriprep_directory,
+    loc_scratch = scfg$scratch_directory,
+    templateflow_home = scfg$templateflow_home,
+    debug_pipeline = scfg$debug,
+    cli_options = cli_options,
+    pkg_dir=system.file(package = "BGprocess")
+  )
+
+  job_id <- fmri.pipeline::cluster_job_submit(script,
+    scheduler = scfg$compute_environment$scheduler,
+    sched_args = sched_args, env_variables = env_variables,
+    wait_jobs = parent_ids
+  )
+
+  return(job_id)
+
+
+  # okay, push job
+}
+
 
 submit_postprocess <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, parent_ids = NULL) {
-  #postprocess_id <- submit_step("postprocess", parent_ids = c(bids_conversion_id, bids_validation_id, fmriprep_id, aroma_id))
 
   # postprocessing
   script <- get_job_script(scfg, "postprocess")
@@ -269,69 +361,4 @@ submit_postprocess <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NUL
     wait_jobs = parent_ids
   )
 
-}
-
-get_job_script <- function(scfg = NULL, job_name) {
-  checkmate::assert_string(job_name)
-  
-  ext <- ifelse(scfg$compute_environment$scheduler == "torque", "pbs", "sbatch")
-  expect_file <- glue("hpc_scripts/{job_name}_subject.{ext}")
-  script <- system.file(expect_file, package = "BGprocess")
-  if (!checkmate::test_file_exists(script)) {
-    stop("In get_job_script, cannot find expected script file: ", expect_file)
-  }
-  return(script)
-}
-
-#' Convert scheduler arguments into a scheduler-specific string
-#' @param scfg A list of configuration settings
-#' @param job_name The name of the job (e.g., "fmriprep", "heudiconv")
-#' @return A character string of scheduler arguments
-#' @importFrom glue glue
-#' @importFrom checkmate assert_string
-#' @keywords internal
-#' @noRd
-get_job_sched_args <- function(scfg=NULL, job_name) {
-  checkmate::assert_string(job_name)
-
-  # TODO: need to use cli_opts approach to remove conflicting/redundant fields in sched_args for -n, -N, etc.
-
-  sched_args <- scfg[[job_name]]$sched_args
-  # convert empty strings to NULL for compatibility with glue
-  if (length(sched_args) == 0L || is.na(sched_args[1L]) || sched_args[1L] == "") sched_args <- NULL
-
-   if (scfg$compute_environment$scheduler == "slurm") {
-     sched_args <- glue(
-       "-N 1",
-       "-n {scfg[[job_name]]$ncores}",
-       "--time={hours_to_dhms(scfg[[job_name]]$nhours)}",
-       "--mem={scfg[[job_name]]$memgb}g",
-       "{sched_args}",
-       .trim = TRUE, .sep = " ", .null = NULL
-     )
-   } else {
-     sched_args <- glue(
-       "-l nodes1:ppn={scfg[[job_name]]$ncores}",
-       "-l walltime={hours_to_dhms(scfg[[job_name]]$nhours)}",
-       "-l mem={scfg[[job_name]]$memgb}",
-       "{sched_args}",
-       .trim = TRUE, .sep = " ", .null = NULL
-     )
-   }
-   
-  return(sched_args)
-
-}
-
-submit_aroma <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
-  if (!isTRUE(scfg$run_aroma)) {
-    # logging needed
-    # DEBUGmessage(glue("Skipping AROMA in {sub_dir} because run_aroma is FALSE in config")
-    return(NULL)
-  } else if (!validate_exists(scfg$compute_environment$aroma_container)) {
-    # WARNINGmessage(glue("Skipping AROMA in {sub_dir} because could not find AROMA container {scfg$compute_environment$aroma_container}")
-    return(NULL)
-  }
-
-  # okay, push job
 }

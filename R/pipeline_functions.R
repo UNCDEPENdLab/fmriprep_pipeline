@@ -1,5 +1,67 @@
 ### Utility functions for the pipeline
 
+
+#' Get the HPC job script for a given job name
+#' @param scfg A list of configuration settings
+#' @param job_name The name of the job (e.g., "fmriprep", "heudiconv")
+#' @return The path to the job script
+#' @importFrom glue glue
+#' @importFrom checkmate assert_string test_file_exists
+#' @keywords internal
+#' @noRd
+get_job_script <- function(scfg = NULL, job_name) {
+  checkmate::assert_string(job_name)
+  
+  ext <- ifelse(scfg$compute_environment$scheduler == "torque", "pbs", "sbatch")
+  expect_file <- glue("hpc_scripts/{job_name}_subject.{ext}")
+  script <- system.file(expect_file, package = "BGprocess")
+  if (!checkmate::test_file_exists(script)) {
+    stop("In get_job_script, cannot find expected script file: ", expect_file)
+  }
+  return(script)
+}
+
+#' Convert scheduler arguments into a scheduler-specific string
+#' @param scfg A list of configuration settings
+#' @param job_name The name of the job (e.g., "fmriprep", "heudiconv")
+#' @return A character string of scheduler arguments
+#' @importFrom glue glue
+#' @importFrom checkmate assert_string
+#' @keywords internal
+#' @noRd
+get_job_sched_args <- function(scfg=NULL, job_name) {
+  checkmate::assert_string(job_name)
+
+  # TODO: need to use cli_opts approach to remove conflicting/redundant fields in sched_args for -n, -N, etc.
+
+  sched_args <- scfg[[job_name]]$sched_args
+  # convert empty strings to NULL for compatibility with glue
+  if (length(sched_args) == 0L || is.na(sched_args[1L]) || sched_args[1L] == "") sched_args <- NULL
+
+   if (scfg$compute_environment$scheduler == "slurm") {
+     sched_args <- glue(
+       "-N 1",
+       "-n {scfg[[job_name]]$ncores}",
+       "--time={hours_to_dhms(scfg[[job_name]]$nhours)}",
+       "--mem={scfg[[job_name]]$memgb}g",
+       "{sched_args}",
+       .trim = TRUE, .sep = " ", .null = NULL
+     )
+   } else {
+     sched_args <- glue(
+       "-l nodes1:ppn={scfg[[job_name]]$ncores}",
+       "-l walltime={hours_to_dhms(scfg[[job_name]]$nhours)}",
+       "-l mem={scfg[[job_name]]$memgb}",
+       "{sched_args}",
+       .trim = TRUE, .sep = " ", .null = NULL
+     )
+   }
+   
+  return(sched_args)
+
+}
+
+
 #' Helper function to allow a nested list to be traversed using a key string supporting nesting
 #' @param lst a list to be traversed
 #' @param key_strings a character vector of keys to traverse the list. Each key string should be

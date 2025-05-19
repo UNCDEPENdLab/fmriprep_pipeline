@@ -55,87 +55,11 @@ function build_qsub_string() {
   echo $qsub_string
 }
 
-#rel is shorthand for "run, echo, log". It looks for the environment $log_file for writing output
-#The first argument is a quoted command to execute.
-#Additional arguments can specify how to handle the command.
-# - c: "comment" -- print the command to the screen and log, but do not execute it
-# - t: "timeit" -- print the command to screen and log, execute it, and include execution timing in output
-# - o: "output" -- print the command to the log, but not screen, execute it, and print the command result to screen
-function rel_old() {
-  #function that runs, echos to terminal, and logs to file an arbitrary command
-  local cmd="${1}"
-  local comment=0
-  local timeit=0
-  local print_stdout=0
-  local pipesave=""
-  local cmdExit=0
-  local cmdOutput=""
-  local thisarg=
-  local substitute=""
-
-  if [ $# -gt 1 ]; then
-    #loop over remaining arguments
-    for ((i = 2; i <= $#; i++)); do
-      thisarg="${!i}"
-      if [[ $thisarg = c ]]; then #print but do not execute
-        comment=1
-      elif [[ $thisarg = t ]]; then #time execution of command
-        timeit=1
-      elif [[ $thisarg = o ]]; then #print the output of the command (returning it for use)
-        print_stdout=1
-      elif [[ $comment -eq 1 ]]; then #get value to return in place of running the command
-        substitute=$thisarg
-      fi
-
-      #printf '%s\n' "Arg $i: ${!i}"
-    done
-  fi
-
-  #for the function to return output to the caller, we need to suppress
-  #any echo chatter in the function other than cmdOutput
-  if [ $print_stdout -eq 1 ]; then
-    comment=0
-    timeit=0
-  fi
-
-  if [ -n "${log_file}" ]; then
-    pipesave="|tee -a '$log_file'"
-    if [[ $comment -eq 1 && "$cmd" != "" ]]; then
-      cmd="## ${cmd}"
-    fi
-    echo -e "${cmd}" >>"${log_file}"
-  fi
-
-  if [ $comment -eq 0 ]; then
-    #echo command to screen verbatim if we are not returning stdout
-    [ $print_stdout -eq 0 ] && echo ${cmd}
-
-    #run command
-    tic=$(date +%s)
-    cmdOutput=$(eval ${cmd}) #capture output of command
-    cmdExit=$?
-    toc=$(date +%s)
-    [ $print_stdout -eq 1 ] && echo "## stdout: $cmdOutput" >>"${log_file}"
-  elif [[ $substitute != "" ]]; then #print substituted/faked comand output instead of command
-    echo $substitute
-  else
-    #echo command to screen with dashes to offset text visually
-    #if a blank character string is passed as the command, just include this without dashes
-    [[ "${cmd}" == "" ]] && echo "" || echo -e "----  ${cmd}"
-  fi
-
-  # how long did it take. write to file if we have a logfile
-  [ $timeit -eq 1 ] && eval "echo -e \"\#\ttook $((($toc - $tic))) seconds\" $pipesave"
-
-  [ $print_stdout -eq 1 ] && echo "$cmdOutput" #print result to screen so it can be captured by caller
-  return $cmdExit                              #exit status of command
-}
-
 # rel is shorthand for "run, echo, log". It looks for the environment $log_file and will write outputs there if specified.
 # Initial arguments specify what to do, including
 # c: "comment"  -- print the command to the screen and log, but do not execute it
 # t: "timeit"   -- print the command to screen and log, execute it, and include execution timing in output
-# o: "output"   -- print the command to the log, but not screen, execute it, and print the command result to screen
+# o: "output"   -- print the command to the log, but not screen, execute it, and print the command result to screen (can be captured by caller)
 # -l <log>      -- specify the location of a log file used for logging. If not specified, rel will look at $log_file
 #
 # After parsing these arguments, all remaining arguments are assumed to be part of the command to be run
@@ -153,71 +77,96 @@ function rel() {
   #function that runs, echos to terminal, and logs to file an arbitrary command
   local comment=0
   local timeit=0
-  local print_stdout=0
-  local pipesave=""
+  local tic=0
+  local toc=0
+  local capture_stdout=0
   local cmdExit=0       # return value of this command
   local cmdOutput=""    # stdout output of the command
   local log=""          # log file where results should be written
 
   [ -n "$log_file" ] && log="$log_file"
-
   [[ $# -eq 0 ]] && echo "No arguments to rel provided" && return 1
+
   while [[ $# -gt 0 ]]; do
-    if [[ $1 = c ]]; then
-      comment=1
-      shift
-    elif [[ $1 = t ]]; then
-      timeit=1
-      shift
-    elif [[ $1 = o ]]; then
-      print_stdout=1
-      shift
-    elif [[ $1 = -l ]]; then
-      log=$2
-      shift 2
-    else
-      break # end of argument parsing -- all remaining text is the command
-    fi
+    case "$1" in
+      c) comment=1; shift ;;
+      t) timeit=1; shift ;;
+      o) capture_stdout=1; shift ;;
+      -l) log="$2"; shift 2 ;;
+      *) break ;;
+    esac
   done
 
+  # while [[ $# -gt 0 ]]; do
+  #   if [[ $1 = c ]]; then
+  #     comment=1
+  #     shift
+  #   elif [[ $1 = t ]]; then
+  #     timeit=1
+  #     shift
+  #   elif [[ $1 = o ]]; then
+  #     capture_stdout=1
+  #     shift
+  #   elif [[ $1 = -l ]]; then
+  #     log=$2
+  #     shift 2
+  #   else
+  #     break # end of argument parsing -- all remaining text is the command
+  #   fi
+  # done
+
   local cmd="$*"
+
+  # Handle comment-only output
+  if [ $comment -eq 1 ]; then
+    # echo command to screen and log with dashes to offset text visually
+    # if a blank string is passed as the command, include this without dashes (pure whitespace)
+    [[ -n "$cmd" ]] && cmd="--- $cmd"
+
+    echo -e "$cmd" # echo to screen
+
+    # if we are writing comment to log, prepend with ## to separate comments from output
+    [ -n "$log" ] && echo -e "## $cmd" >> "$log" # log
+    
+    return 0 # return immediately if we are just commenting
+  fi
+
+  # log the command
+  [ -n "$log" ] && echo -e "$cmd" >> "$log"
   
-  #for the function to return output to the caller, we need to suppress
-  #any echo chatter in the function other than cmdOutput
-  if [ $print_stdout -eq 1 ]; then
-    comment=0
-    timeit=0
-  fi
+  #echo command to screen verbatim if we are not capturing stdout
+  [ $capture_stdout -eq 0 ] && echo "$cmd"
 
-  if [ -n "$log" ]; then
-    pipesave="| tee -a '$log'"
-    if [[ $comment -eq 1 && "$cmd" != "" ]]; then
-      cmd="## ${cmd}"
-    fi
-    echo -e "${cmd}" >>"${log}"
-  fi
-
-  if [ $comment -eq 0 ]; then
-    #echo command to screen verbatim if we are not returning stdout
-    [ $print_stdout -eq 0 ] && echo ${cmd}
-
-    #run command
-    tic=$(date +%s)
-    cmdOutput=$(eval ${cmd}) #capture output of command
+  #run command
+  [ $timeit -eq 1 ] && tic=$(date +%s)
+  if [ $capture_stdout -eq 1 ]; then
+    # if we are capturing stdout, we need to save the output of the command and not echo it to the screen
+    cmdOutput=$(eval "$cmd")
     cmdExit=$?
-    toc=$(date +%s)
-    [ $print_stdout -eq 1 ] && echo "## stdout: $cmdOutput" >>"$log"
+    [ -n "$log" ] && echo -e "## stdout: $cmdOutput" >> "$log"
   else
-    #echo command to screen with dashes to offset text visually
-    #if a blank character string is passed as the command, just include this without dashes
-    [[ "${cmd}" == "" ]] && echo "" || echo -e "----  ${cmd}"
+    # otherwise, run the command and let it print to the screen
+    if [ -n "$log" ]; then
+      # if we are logging, redirect stderr to stdout so that it gets captured in the log file
+      eval "$cmd" 2>&1 | tee -a "$log"
+      cmdExit=${PIPESTATUS[0]} # capture the exit status of the command (not tee)
+    else
+      # if we are not logging, just run the command normally
+      eval "$cmd"
+      cmdExit=$?
+    fi
+  fi
+  [ $timeit -eq 1 ] && toc=$(date +%s)
+
+  # handle timing output
+  if [[ $timeit -eq 1 && $capture_stdout -eq 0 ]]; then
+    local msg="##  Command took $((toc - tic)) seconds"
+    [ -n "$log" ] && echo -e "$msg" >> "$log" || echo -e "$msg"
   fi
 
-  # how long did it take. write to file if we have a logfile
-  [ $timeit -eq 1 ] && eval "echo -e \"#\ttook $((($toc - $tic))) seconds\" $pipesave"
-
-  [ $print_stdout -eq 1 ] && echo "$cmdOutput" #print result to screen so it can be captured by caller
-  return $cmdExit                              #exit status of command
+  # Return captured output if requested
+  [ $capture_stdout -eq 1 ] && echo "$cmdOutput"
+  return $cmdExit  #exit status of command
 }
 
 # this function extracts the jobID number from a qsub job listing and intelligently constructs the desired dependency string
@@ -281,4 +230,71 @@ function trap_job_failure() {
   } >> "$fail_file"
 
   exit 1
+}
+
+function on_error() {
+  local step="$1"
+  local exit_code=$?
+  local now
+  now=$(date +"%Y-%m-%d %H:%M:%S")
+  local fail_file=".${step}_fail"
+  local job_id="${SLURM_JOB_ID:-unknown}"
+  local job_name="${SLURM_JOB_NAME:-unknown}"
+
+  {
+    echo "[$now] $step job failed."
+    echo "  Exit Code  : $exit_code"
+    echo "  Job ID     : $job_id"
+    echo "  Job Name   : $job_name"
+    echo "  Working Dir: $(pwd)"
+    echo "  Error occurred on line $LINENO in command: '$BASH_COMMAND'"
+    echo
+  } >> "$fail_file"
+
+  # Add any cleanup or logging logic here
+}
+
+
+function archive_file() {
+    fname="${1}"
+    if [ -f "${fname}" ]; then
+    	#stat and date are not portable across Linux and BSD...
+      [ $( uname ) = Darwin ] && mtime=$( stat -f "%Sm" -t "%Y%m%d_%H%M" "${fname}" ) || mtime=$( date -r "${fname}" +%Y%m%d_%H%M )
+      mv "${fname}" "${fname}_${mtime}"
+    fi
+    return 0
+}
+
+
+#adapted from here: https://gist.github.com/aguy/2359833
+function traperror () {
+    local err=$1 # error status
+    local line=$2 # LINENO
+    local linecallfunc=$3
+    local command="$4"
+    local funcstack="$5"
+    local dotfile=".${step}_fail"
+
+    archive_file "${dotfile}_crash" #move any existing crash file out of the way
+    echo "$(date) $(hostname) $0: ERROR '$command' failed at line $line - exited with status: $err" | tee -a "${dotfile}_crash"
+
+    if [ "$funcstack" != "::" ]; then
+      echo -n "$0: DEBUG Error in ${funcstack} " | tee -a "${dotfile}_crash"
+	if [ "$linecallfunc" != "" ]; then
+	    echo "called at line $linecallfunc" | tee -a "${dotfile}_crash"
+	fi
+    fi
+    [ -n "$originalcwd" ] && echo -en "Initial working directory:\n  $originalcwd\n" | tee -a "${dotfile}_crash"
+    echo -en "\nCurrent working directory:\n  $PWD\n" | tee -a "${dotfile}_crash"
+    [ -n "$originalargs" ] && echo -en "\nArguments passed to script:\n  $originalargs\n\n" | tee -a "${dotfile}_crash"
+
+    if [ -r "${logFile}" ]; then
+	echo -en "\n\nLast 10 lines of log file:\n---------\n\n" | tee -a "${dotfile}_crash" #add two newlines
+	tail -n 10 "${logFile}" | tee -a "${dotfile}_crash"
+    fi
+
+    if [ -r "preprocessFunctional_stderr" ]; then
+	echo -en "\n\nLast 10 lines of preprocessFunctional_stderr:\n---------\n\n" | tee -a "${dotfile}_crash"
+	tail -n 10 preprocessFunctional_stderr | tee -a "${dotfile}_crash"
+    fi
 }

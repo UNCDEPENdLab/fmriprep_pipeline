@@ -13,8 +13,9 @@
 #' @importFrom glue glue
 #' @importFrom checkmate assert_list assert_flag assert_directory_exists
 #' @importFrom lgr get_logger_glue
-run_study <- function(scfg, prompt = TRUE, debug = FALSE, force = FALSE) {
+run_study <- function(scfg, steps=NULL, prompt = TRUE, debug = FALSE, force = FALSE) {
   checkmate::assert_list(scfg)
+  checkmate::assert_character(steps, null.ok = TRUE)
   checkmate::assert_flag(prompt)
   checkmate::assert_flag(debug)
   checkmate::assert_flag(force)
@@ -30,6 +31,11 @@ run_study <- function(scfg, prompt = TRUE, debug = FALSE, force = FALSE) {
       "))
   
   if (isFALSE(prompt)) {
+    if ("bids_conversion" %in% steps) {
+      if (is.null(scfg$heudiconv$sub_regex)) stop("Cannot run BIDS conversion without a subject regex.")
+      if (is.null(scfg$heudiconv$ses_regex)) stop("Cannot run BIDS conversion without a session regex.")
+    }
+
     steps <- c(
       bids_conversion = ifelse(is.null(scfg$compute_environment$heudiconv_container), FALSE, TRUE),
       bids_validation = ifelse(is.null(scfg$compute_environment$bids_validator), FALSE, TRUE),

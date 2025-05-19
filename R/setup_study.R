@@ -88,6 +88,9 @@ setup_study <- function(input = NULL, fields = NULL) {
     if (create) dir.create(scfg$fmriprep_directory, recursive = TRUE) # should probably force this to happen
   }
 
+  scfg$log_directory <- file.path(scfg$project_directory, "logs")
+  if (!checkmate::test_directory_exists(scfg$log_directory)) dir.create(scfg$log_directory, recursive = TRUE)
+
   if (is.null(scfg$scratch_directory) || "scratch_directory" %in% fields) {
     scfg$scratch_directory <- prompt_input("Work directory: ",
       instruct = glue("
@@ -102,6 +105,21 @@ setup_study <- function(input = NULL, fields = NULL) {
   if (!checkmate::test_directory_exists(scfg$scratch_directory)) {
     create <- prompt_input(instruct = glue("The directory {scfg$scratch_directory} does not exist. Would you like me to create it?\n"), type = "flag")
     if (create) dir.create(scfg$scratch_directory, recursive = TRUE)
+  }
+
+  if (is.null(scfg$templateflow_home) || "templateflow_home" %in% fields) {
+    scfg$templateflow_home <- prompt_input("Templateflow directory: ",
+      instruct = glue("
+      \nThe pipeline uses TemplateFlow to download and cache templates for use in fMRI processing.
+      Please specify the location of the TemplateFlow cache directory. The default is $HOME/.cache/templateflow.
+      You can also point to a different location if you have a shared cache directory for multiple users.
+      "), type = "character", default = file.path(Sys.getenv("HOME"), ".cache", "templateflow")
+    )
+  }
+
+  if (!checkmate::test_directory_exists(scfg$templateflow_home)) {
+    create <- prompt_input(instruct = glue("The directory {scfg$templateflow_home} does not exist. Would you like me to create it?\n"), type = "flag")
+    if (create) dir.create(scfg$templateflow_home, recursive = TRUE)
   }
 
   if (is.null(scfg$run_aroma) || "run_aroma" %in% fields) {
@@ -160,13 +178,113 @@ setup_fmriprep <- function(scfg = NULL, fields = NULL) {
 
   scfg <- setup_job(scfg, "fmriprep", defaults = defaults)
 
-  # pass forward the memgb job setting to fmriprep itself to bound memory use
-  if (!is.null(scfg$fmriprep$memgb)) {
-    scfg$fmriprep$cli_options <- set_cli_options(scfg$fmriprep$cli_options, glue("--mem {scfg$fmriprep$memgb*1000}"))
+  if (is.null(scfg$fmriprep$output_spaces) || "fmriprep/output_spaces" %in% fields) {
+    scfg$fmriprep$output_spaces <- choose_fmriprep_spaces(scfg$fmriprep$output_spaces)
+  }
+
+  if (is.null(scfg$fmriprep$fs_license_file) || "fmriprep/fs_license_file" %in% fields) {
+    scfg$fmriprep$fs_license_file <- prompt_input(
+      instruct = glue("
+      \nWhat is the location of your FreeSurfer license file? This is required for fmriprep to run.
+      The license file is might be called FreeSurferLicense.txt and is available from the FreeSurfer website.
+      https://surfer.nmr.mgh.harvard.edu/fswiki/License
+      \n
+    "),
+      prompt = "What is the location of your FreeSurfer license file?",
+      type = "file"
+    )
   }
 
   return(scfg)
 
+}
+
+#' helper function to setup output spaces for fmriprep
+#' @param output_spaces a string of exiting output spaces to be modified
+#' @return a string of output spaces to be used in fmriprep
+#' @keywords internal
+#' @importFrom glue glue
+#' @importFrom utils menu select.list
+#' @noRd
+choose_fmriprep_spaces <- function(output_spaces = NULL) {
+  cat(glue("\nfmriprep uses --output-spaces to control the stereotaxic space and resolution
+           of preprocessed images. Its default space is MNI152NLin2009cAsym and the default
+           spatial resolution matches the raw/native data. Here, you can specify the output
+           spaces to be generated. This is not a comprehensive list of all templates available
+           in TemplateFlow (https://github.com/templateflow/templateflow), but it encompasses
+           the most useful ones. The default of MNI152NLin2009cAsym is pretty good, too!
+           For more detail, see: https://fmriprep.org/en/stable/spaces.html.
+           
+           Of note, the 'res-' specifier controls the output resolution, but it is not the
+           voxel size! Rather, it refers to a resolution index in the files uploaded to
+           TemplateFlow. Usually, res-1 is 1mm and res-2 is 2mm, but you mileage may vary.
+           
+           If you are using AROMA as part of your pipeline, we will automatically add
+           MNI152NLin6Asym:res-2 so that fmripost-aroma can run.\n\n
+           "))
+  
+  templates_available <- c(
+    "MNI152NLin2009cAsym", "MNI152NLin6Asym", "MNI152NLin6Sym",
+    "MNI152NLin2006Asym", "MNIPediatricAsym", "MNIInfant",
+    "MNIColin27", "MNI305", "OASIS30ANTs"
+  )
+  additional_spaces <- c("T1w", "T2w", "anat", "fsnative", "fsaverage", "fsaverage5", "fsaverage6")
+  
+  # Parse input string into initial set
+  current_spaces <- character()
+  if (!is.null(output_spaces)) {
+    current_spaces <- unlist(strsplit(output_spaces, "\\s+"))
+  }
+  
+  repeat {
+    cat("\nCurrent --output-spaces:\n")
+    if (length(current_spaces) == 0) {
+      cat("  (none selected yet)\n")
+    } else {
+      for (i in seq_along(current_spaces)) {
+        cat(sprintf("  [%d] %s\n", i, current_spaces[i]))
+      }
+    }
+    
+    cat("\nWhat would you like to do?\n")
+    choice <- menu(c("Add a space", "Delete a space", "Finish and return"), title = "Modify output spaces:")
+    
+    if (choice == 1) {
+      # Add a space
+      type_choice <- menu(c("Template space", "Other space (e.g., T1w, fsaverage)"), title = "Add space type:")
+      if (type_choice == 1) {
+        # Select a template
+        selected_template <- utils::select.list(templates_available, multiple = FALSE, title = "Choose a template")
+        if (selected_template != "") {
+          res_input <- readline(paste0("Enter resolution index for ", selected_template, " (or press ENTER to skip): "))
+          space_string <- if (res_input == "") {
+            selected_template
+          } else {
+            paste0(selected_template, ":res-", res_input)
+          }
+          current_spaces <- unique(c(current_spaces, space_string))
+        }
+      } else if (type_choice == 2) {
+        selected_additional <- utils::select.list(additional_spaces, multiple = TRUE, title = "Choose additional space(s)")
+        current_spaces <- unique(c(current_spaces, selected_additional))
+      }
+    } else if (choice == 2) {
+      # Delete a space
+      if (length(current_spaces) == 0) {
+        cat("No spaces to delete.\n")
+      } else {
+        del_choice <- utils::select.list(current_spaces, multiple = TRUE, title = "Select space(s) to remove:")
+        current_spaces <- setdiff(current_spaces, del_choice)
+      }
+    } else if (choice == 3) {
+      break
+    }
+  }
+  
+  final_output_spaces <- paste(current_spaces, collapse = " ")
+  cat("\nFinal --output-spaces argument:\n")
+  cat("  ", final_output_spaces, "\n")
+  return(final_output_spaces)
 }
 
 setup_bids_validation <- function(scfg, fields=NULL) {
@@ -612,9 +730,4 @@ setup_compute_environment <- function(scfg = list(), fields = NULL) {
   }
 
   return(scfg)
-}
-
-# not currently used -- just testing
-get_singularity_string <- function(scfg) {
-  SINGULARITY_CMD <- "singularity run --cleanenv -B $BIDS_DIR:/data -B ${TEMPLATEFLOW_HOST_HOME}:${SINGULARITYENV_TEMPLATEFLOW_HOME} -B $L_SCRATCH:/work -B ${LOCAL_FREESURFER_DIR}:/fsdir $STUDY/images/poldracklab_fmriprep_1.5.0.simg"
 }
