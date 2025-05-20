@@ -16,8 +16,7 @@ trap 'trap_job_failure fmriprep SIGTERM' SIGTERM
 trap 'trap_job_failure fmriprep SIGINT' SIGINT
 trap 'trap_job_failure fmriprep SIGHUP' SIGHUP
 trap 'trap_job_failure fmriprep SIGQUIT' SIGQUIT
-#trap 'traperror $? $LINENO $BASH_LINENO "$BASH_COMMAND" $(printf "::%s" ${FUNCNAME[@]:-})' ERR
-trap 'on_error $?' ERR
+trap 'traperror fmriprep $? $LINENO ${BASH_LINENO[0]} "$BASH_COMMAND" $(printf "::%s" ${FUNCNAME[@]:-})' ERR
 
 # default nthreads to however many cores we have $SLURM_SOMETHING
 [ -z "$fmriprep_nthreads" ] && echo "No fmriprep_nthreads environment variable. Defaulting to 4" && fmriprep_nthreads=4
@@ -49,12 +48,10 @@ fs_dir=$(dirname "$fs_license_file")
 ###
 # handle multi-session setup
 if [ -n "$ses_id" ]; then
-  out_dir=${loc_bids_root}/sub-${sub_id}/ses-${ses_id}
-  ses_flag="--ses $ses_id"
+  out_dir=${loc_mrproc_root}/sub-${sub_id}/ses-${ses_id}
   ses_str="session $ses_id"
 else
-  out_dir=${loc_bids_root}/sub-${sub_id}
-  ses_flag=""
+  out_dir=${loc_mrproc_root}/sub-${sub_id}
   ses_str=""
 fi
 mkdir -p "$out_dir"
@@ -62,6 +59,7 @@ cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
 
 ####
 [[ "$debug_pipeline" -eq 1 ]] && rel_flag=c #if debug_pipeline is 1, only echo command to log, don't run it
+[[ -n "$cmd_log" ]] && cmd_log="-l $cmd_log" # if cmd_log is set, pass it to rel
 
 singularity_cmd="singularity run --cleanenv -B '$loc_bids_root' -B '$loc_scratch' \
   -B '$loc_mrproc_root' -B '$templateflow_home' -B '$fs_dir' '$fmriprep_container'"
@@ -74,7 +72,7 @@ rel $rel_flag $cmd_log export APPTAINERENV_FS_LICENSE="$fs_license_file" # set t
 #singularity exec --cleanenv -B "$loc_bids_root" -B "$loc_scratch" \
 #    -B "$loc_mrproc_root" -B "$templateflow_home" -B "$fs_dir" "$fmriprep_container" fmriprep \
 
-rel $rel_flag $singularity_cmd \
+rel $rel_flag $cmd_log $singularity_cmd \
     "$loc_bids_root" "$loc_mrproc_root/" participant \
     $cli_options # all options setup by submit_fmriprep()
 

@@ -54,6 +54,7 @@ cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
 
 ####
 [[ "$debug_pipeline" -eq 1 ]] && rel_flag=c #if debug_pipeline is 1, only echo command to log, don't run it
+[[ -n "$cmd_log" ]] && cmd_log="-l $cmd_log" # if cmd_log is set, pass it to rel
 
 singularity_cmd="singularity run --cleanenv -B '$loc_bids_root' -B '$loc_scratch' \
   -B '$loc_mrproc_root' -B '$templateflow_home' '$aroma_container'"
@@ -65,7 +66,7 @@ rel $rel_flag $cmd_log export APPTAINERENV_TEMPLATEFLOW_HOME="$templateflow_home
 #singularity exec --cleanenv -B "$loc_bids_root" -B "$loc_scratch" \
 #    -B "$loc_mrproc_root" -B "$templateflow_home" "$aroma_container" aroma \
 
-rel $rel_flag $singularity_cmd \
+rel $rel_flag $cmd_log $singularity_cmd \
     "$loc_bids_root" "$loc_mrproc_root/" participant \
     $cli_options # all options setup by submit_aroma()
 

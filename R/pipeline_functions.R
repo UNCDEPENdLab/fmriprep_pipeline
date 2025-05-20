@@ -306,8 +306,9 @@ pretty_arg <- function(x, width = 80) {
 #' @return a configured lgr object for logging subject processing messages
 #' @importFrom lgr get_logger_glue
 #' @keywords internal
-get_subject_logger <- function(scfg, sub_dir) {
-  sub_id <- get_sub_id(sub_dir)
+get_subject_logger <- function(scfg, sub_id) {
+  checkmate::assert_directory_exists(scfg$project_directory)
+  sub_dir <- file.path(scfg$project_directory, "logs", glue("sub-{sub_id}"))
   lg <- lgr::get_logger_glue(c("sub", sub_id))
   if (isTRUE(scfg$log_txt) && !"subject_logger" %in% names(lg$appenders)) {
     lg$add_appender(lgr::AppenderFile$new(file.path(sub_dir, glue("sub-{sub_id}_log.txt"))), name = "subject_logger")

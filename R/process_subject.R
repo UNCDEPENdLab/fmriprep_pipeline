@@ -24,8 +24,7 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
 
   sub_id <- sub_cfg$sub_id[1L]
   bids_sub_dir <- sub_cfg$bids_sub_dir[1L]
-  log_str <- "sub-{sub_cfg$sub_id}"
-  lg <- lgr::get_logger_glue(log_str)
+  lg <- get_subject_logger(sub_id)
   
   bids_conversion_ids <- bids_validation_id <- mriqc_id <- fmriprep_id <- aroma_id <- postprocess_ids <- NULL
 
@@ -39,6 +38,7 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
   submit_step <- function(name, row_idx = 1L, parent_ids = NULL) {
     session_level <- name %in% c("bids_conversion", "postprocess") # only these two are session-level
 
+    sub_id <- sub_cfg$sub_id[row_idx]
     ses_id <- sub_cfg$ses_id[row_idx]
     has_ses <- !is.na(ses_id)
     ses_str <- ifelse(has_ses && session_level, glue("_ses-{ses_id}"), "") # qualifier for .complete file
@@ -46,31 +46,55 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
     file_exists <- checkmate::test_file_exists(complete_file)
 
     job_id <- NULL
-    if (steps[name] && (scfg$force || !file_exists)) {
-      if (file_exists) {
-        lg$debug("Removing existing .{name}{ses_str}_complete file {complete_file}")
-        unlink(complete_file)
-      }
-
-      # determine the directory to use for the job submission
-      if (session_level && has_ses) {
-        # if it's a session-level process and we have a valid session-level input, use the session directory
-        dir <- ifelse(name == "bids_conversion", sub_cfg$dicom_ses_dir[row_idx], sub_cfg$bids_ses_dir[row_idx])
-      } else {
-        # if it's a subject-level process or we don't have a valid session-level input, use the subject directory
-        dir <- ifelse(name == "bids_conversion", sub_cfg$dicom_sub_dir[row_idx], sub_cfg$bids_sub_dir[row_idx])
-      }
-      
-      # launch submission function
-      job_id <- do.call(glue("submit_{name}"), list(scfg, dir, sub_cfg$sub_id[row_idx], sub_cfg$ses_id[row_idx], parent_ids))
-    } else {
-      job_id <- NULL # job is already complete or is not requested
+    # skip out if this step is not requested or it is already complete
+    if (!steps[name] || (file_exists && !scfg$force)) {
       if (file_exists) {
         lg$debug("Skipping {name} for {sub_id} because .{name}{ses_str}_complete file already exists.")
       } else {
         lg$debug("Skipping {name} for {sub_id} because step is not requested.")
       }
+      return(job_id)
     }
+
+    # clear existing complete file if we are starting over on this step
+    if (file_exists) {
+      lg$debug("Removing existing .{name}{ses_str}_complete file {complete_file}")
+      unlink(complete_file)
+    }
+
+    # shared components across specific jobs
+    jobid_str <- ifelse(has_ses, glue("{name}-sub-{sub_id}_ses-{ses_id}"), glue("{name}-sub-{sub_id}"))
+    env_variables <- c(
+      debug_pipeline = scfg$debug,
+      pkg_dir = system.file(package = "BGprocess"), # root of inst folder for installed R package
+      cmd_log = lg$appenders$subject_logger$destination, # write to same file as subject lgr
+      stdout_log = glue("{scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.out"),
+      stderr_log = glue("{scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.err"),
+    )
+    sched_script <- get_job_script(scfg, name)
+    sched_args <- get_job_sched_args(scfg, name)
+    sched_args <- set_cli_options( # setup files for stdout and stderr, job name
+      sched_args,
+      c(
+        glue("--job-name={jobid_str}"),
+        glue("--output={env_variables['stdout_log']}"),
+        glue("--error={env_variables['stderr_log']}")
+      )
+    )
+
+    # determine the directory to use for the job submission
+    if (session_level && has_ses) {
+      # if it's a session-level process and we have a valid session-level input, use the session directory
+      dir <- ifelse(name == "bids_conversion", sub_cfg$dicom_ses_dir[row_idx], sub_cfg$bids_ses_dir[row_idx])
+    } else {
+      # if it's a subject-level process or we don't have a valid session-level input, use the subject directory
+      dir <- ifelse(name == "bids_conversion", sub_cfg$dicom_sub_dir[row_idx], sub_cfg$bids_sub_dir[row_idx])
+    }
+
+    # launch submission function -- these all follow the same input argument structure
+    lg$debug("Launching submit_{name} for subject: {sub_id}")
+    job_id <- do.call(glue("submit_{name}"), list(scfg, dir, sub_id, ses_id, env_variables, sched_script, sched_args, parent_ids, lg))
+
     return(job_id)
   }
 
@@ -118,15 +142,13 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
   # bids_validation_id <- submit_step("bids_validation", parent_ids = bids_conversion_ids)
 
   ## Handle MRIQC
-  # mriqc_id <- submit_step("mriqc", parent_ids = c(bids_conversion_ids, bids_validation_id))
+  mriqc_id <- submit_step("mriqc", parent_ids = bids_conversion_ids)
 
   ## Handle fmriprep
-  fmriprep_id <- submit_step("fmriprep", parent_ids = c(bids_conversion_ids, bids_validation_id))
-
-  return(TRUE)
+  fmriprep_id <- submit_step("fmriprep", parent_ids = bids_conversion_ids))
 
   ## Handle aroma
-  aroma_id <- submit_step("aroma", parent_ids = c(bids_conversion_ids, bids_validation_id, fmriprep_id))
+  aroma_id <- submit_step("aroma", parent_ids = c(bids_conversion_ids, fmriprep_id))
 
   ## Handle postprocessing
   postprocess_ids <- unlist(lapply(seq_len(n_inputs), function(idx) submit_step("postprocess", row_idx = idx, parent_ids = c(bids_conversion_ids, bids_validation_id, fmriprep_id, aroma_id))))
@@ -135,66 +157,44 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
 }
 
 
-submit_bids_conversion <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, parent_ids = NULL) {
+submit_bids_conversion <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env_variables = NULL, sched_script = NULL, sched_args = NULL, parent_ids = NULL, lg = NULL) {
   # heudiconv  --files dicom/219/itbs/*/*.dcm -o Nifti -f Nifti/code/heuristic1.py -s 219 -ss itbs -c dcm2niix -b --minmeta --overwrite
 
-  jobid_str <- if (!is.null(ses_id) && !is.na(ses_id[1L])) {
-    glue("heudiconv-sub-{sub_id}_ses-{ses_id}")
-  } else {
-    glue("heudiconv-sub-{sub_id}")
-  }
-
-  # heudiconv
-  script <- get_job_script(scfg, "heudiconv")
-  sched_args <- get_job_sched_args(scfg, "heudiconv")
-  sched_args <- set_cli_options(sched_args, glue("--job-name={jobid_str}"))
-
   env_variables <- c(
+    env_variables,
     heudiconv_container = scfg$compute_environment$heudiconv_container,
     loc_sub_dicoms = sub_dir,
     loc_bids_root = scfg$bids_directory,
     heudiconv_heuristic = scfg$heudiconv$heuristic_file,
     validate_bids = scfg$heudiconv$validate_bids,
     sub_id = sub_id,
-    ses_id = ses_id,
-    debug_pipeline = scfg$debug,
-    pkg_dir = system.file(package = "BGprocess"), # root of inst folder for installed R package
-    cmd_log="/proj/mnhallqlab/projects/preproc_pipeline_test_data/output.txt"
+    ses_id = ses_id
   )
 
-  job_id <- fmri.pipeline::cluster_job_submit(script,
+  job_id <- fmri.pipeline::cluster_job_submit(sched_script,
     scheduler = scfg$compute_environment$scheduler,
     sched_args = sched_args, env_variables = env_variables,
-    wait_jobs = parent_ids
+    wait_jobs = parent_ids, echo = FALSE
   )
+
+  # log submission command
+  
 
   return(job_id)
 
 }
 
-
-submit_bids_validation <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, parent_ids = NULL) {
-  jobid_str <- if (!is.null(ses_id) && !is.na(ses_id[1L])) {
-    glue("bids_validation-sub-{sub_id}_ses-{ses_id}")
-  } else {
-    glue("bids_validation-sub-{sub_id}")
-  }
-
-  # bids_validation
-  script <- get_job_script(scfg, "bids_validation")
-  sched_args <- get_job_sched_args(scfg, "bids_validation")
-  sched_args <- set_cli_options(sched_args, glue("--job-name={jobid_str}"))
-
+submit_bids_validation <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env_variables = NULL, sched_script = NULL, sched_args = NULL, parent_ids = NULL, lg = NULL) {
+  
   env_variables <- c(
+    env_variables,
     bids_validator = scfg$compute_environment$bids_validator,
     bids_dir = sub_dir,
     sub_id = sub_id,
-    debug_pipeline = scfg$debug,
-    pkg_dir = system.file(package = "BGprocess"), # root of inst folder for installed R package
     outfile = scfg$bids_validation$outfile
   )
 
-  job_id <- fmri.pipeline::cluster_job_submit(script,
+  job_id <- fmri.pipeline::cluster_job_submit(sched_script,
     scheduler = scfg$compute_environment$scheduler,
     sched_args = sched_args, env_variables = env_variables,
     wait_jobs = parent_ids
@@ -203,7 +203,7 @@ submit_bids_validation <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id =
   return(job_id)
 }
 
-submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, parent_ids = NULL) {
+submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env_variables = NULL, sched_script = NULL, sched_args = NULL, parent_ids = NULL, lg = NULL) {
   checkmate::assert_list(scfg)
   checkmate::assert_character(parent_ids, null.ok = TRUE)
 
@@ -213,22 +213,7 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
     return(NULL)
   }
 
-  jobid_str <- if (!is.null(ses_id) && !is.na(ses_id[1L])) {
-    glue("fmriprep-sub-{sub_id}_ses-{ses_id}")
-  } else {
-    glue("fmriprep-sub-{sub_id}")
-  }
-
   #lg <- get_subject_logger(sub_dir)
-
-  script <- get_job_script(scfg, "fmriprep")
-  sched_args <- get_job_sched_args(scfg, "fmriprep")
-  sched_args <- set_cli_options(
-    sched_args,
-    c(glue("--job-name={jobid_str}"), 
-    glue("--output={scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.out"),
-    glue("--error={scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.err"))
-  )
 
   if (isTRUE(scfg$run_aroma) && !grepl("MNI152NLin6Asym:res-2", scfg$fmriprep$output_spaces, fixed = TRUE)) {
     message("Adding MNI152NLin6Asym:res-2 to output spaces for fmriprep to allow AROMA to run.")
@@ -246,6 +231,7 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
   ))
 
   env_variables <- c(
+    env_variables,
     fmriprep_container = scfg$compute_environment$fmriprep_container,
     sub_id = sub_id,
     ses_id = ses_id,
@@ -254,12 +240,10 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
     loc_scratch = scfg$scratch_directory,
     templateflow_home = scfg$templateflow_home,
     fs_license_file = scfg$fmriprep$fs_license_file,
-    debug_pipeline = scfg$debug,
-    cli_options = cli_options,
-    pkg_dir=system.file(package = "BGprocess")
+    cli_options = cli_options
   )
 
-  job_id <- fmri.pipeline::cluster_job_submit(script,
+  job_id <- fmri.pipeline::cluster_job_submit(sched_script,
     scheduler = scfg$compute_environment$scheduler,
     sched_args = sched_args, env_variables = env_variables,
     wait_jobs = parent_ids
@@ -269,7 +253,42 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
 }
 
 
-submit_aroma <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
+submit_mriqc <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env_variables = NULL, sched_script = NULL, sched_args = NULL, parent_ids = NULL, lg = NULL) {
+   if (!validate_exists(scfg$compute_environment$mriqc_container)) {
+    message(glue("Skipping MRIQC in {sub_dir} because could not find MRIQC container {scfg$compute_environment$mriqc_container}"))
+    return(NULL)
+  }
+
+  cli_options <- set_cli_options(scfg$mriqc$cli_options, c(
+    glue("--nprocs {scfg$mriqc$ncores}"),
+    glue("--omp-nthreads {scfg$mriqc$ncores}"),
+    glue("--participant_label {sub_id}"),
+    glue("-w {scfg$scratch_directory}"),
+    glue("--mem-gb {scfg$mriqc$memgb}")
+  ))
+
+  env_variables <- c(
+    env_variables,
+    mriqc_container = scfg$compute_environment$mriqc_container,
+    sub_id = sub_id,
+    ses_id = ses_id,
+    loc_bids_root = scfg$bids_directory,
+    loc_mrproc_root = scfg$fmriprep_directory,
+    loc_scratch = scfg$scratch_directory,
+    templateflow_home = scfg$templateflow_home,
+    cli_options = cli_options
+  )
+
+  job_id <- fmri.pipeline::cluster_job_submit(sched_script,
+    scheduler = scfg$compute_environment$scheduler,
+    sched_args = sched_args, env_variables = env_variables,
+    wait_jobs = parent_ids
+  )
+
+  return(job_id)
+}
+
+submit_aroma <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env_variables = NULL, sched_script = NULL, sched_args = NULL, parent_ids = NULL, lg = NULL) {
    if (!validate_exists(scfg$compute_environment$aroma_container)) {
     message(glue("Skipping AROMA in {sub_dir} because could not find AROMA container {scfg$compute_environment$aroma_container}"))
     return(NULL)
@@ -281,22 +300,8 @@ submit_aroma <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
     return(NULL)
   }
 
-  jobid_str <- if (!is.null(ses_id) && !is.na(ses_id[1L])) {
-    glue("aroma-sub-{sub_id}_ses-{ses_id}")
-  } else {
-    glue("aroma-sub-{sub_id}")
-  }
-
+  
   #lg <- get_subject_logger(sub_dir)
-
-  script <- get_job_script(scfg, "aroma")
-  sched_args <- get_job_sched_args(scfg, "aroma")
-  sched_args <- set_cli_options(
-    sched_args,
-    c(glue("--job-name={jobid_str}"), 
-    glue("--output={scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.out"),
-    glue("--error={scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.err"))
-  )
 
   if (isTRUE(scfg$run_aroma) && !grepl("MNI152NLin6Asym:res-2", scfg$fmriprep$output_spaces, fixed = TRUE)) {
     message("Adding MNI152NLin6Asym:res-2 to output spaces for fmriprep to allow AROMA to run.")
@@ -316,6 +321,7 @@ submit_aroma <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
   ))
 
   env_variables <- c(
+    env_variables,
     aroma_container = scfg$compute_environment$aroma_container,
     sub_id = sub_id,
     ses_id = ses_id,
@@ -323,39 +329,34 @@ submit_aroma <- function(scfg, sub_dir = NULL, parent_ids = NULL) {
     loc_mrproc_root = scfg$fmriprep_directory,
     loc_scratch = scfg$scratch_directory,
     templateflow_home = scfg$templateflow_home,
-    debug_pipeline = scfg$debug,
-    cli_options = cli_options,
-    pkg_dir=system.file(package = "BGprocess")
+    cli_options = cli_options
   )
 
-  job_id <- fmri.pipeline::cluster_job_submit(script,
+  job_id <- fmri.pipeline::cluster_job_submit(sched_script,
     scheduler = scfg$compute_environment$scheduler,
     sched_args = sched_args, env_variables = env_variables,
     wait_jobs = parent_ids
   )
 
   return(job_id)
-
-
-  # okay, push job
 }
 
 
-submit_postprocess <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, parent_ids = NULL) {
+submit_postprocess <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env_variables = NULL, sched_script = NULL, sched_args = NULL, parent_ids = NULL, lg = NULL) {
 
   # postprocessing
   script <- get_job_script(scfg, "postprocess")
   sched_args <- get_job_sched_args(scfg, "postprocess")
   env_variables <- c(
+    env_variables,
     heudiconv_container = scfg$compute_environment$heudiconv_container,
     loc_sub_dicoms = scfg$dicom_directory,
     loc_bids_root = scfg$bids_directory,
     heudiconv_heuristic = scfg$heudiconv$heuristic_file,
-    sub = get_sub_id(sub_dir),
-    debug_pipeline = scfg$debug
+    sub = get_sub_id(sub_dir)
   )
 
-  job_id <- cluster_job_submit(script,
+  job_id <- fmri.pipeline::cluster_job_submit(script,
     scheduler = scfg$compute_environment$scheduler,
     sched_args = sched_args, env_variables = env_variables,
     wait_jobs = parent_ids

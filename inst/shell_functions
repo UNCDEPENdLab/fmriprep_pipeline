@@ -97,24 +97,6 @@ function rel() {
     esac
   done
 
-  # while [[ $# -gt 0 ]]; do
-  #   if [[ $1 = c ]]; then
-  #     comment=1
-  #     shift
-  #   elif [[ $1 = t ]]; then
-  #     timeit=1
-  #     shift
-  #   elif [[ $1 = o ]]; then
-  #     capture_stdout=1
-  #     shift
-  #   elif [[ $1 = -l ]]; then
-  #     log=$2
-  #     shift 2
-  #   else
-  #     break # end of argument parsing -- all remaining text is the command
-  #   fi
-  # done
-
   local cmd="$*"
 
   # Handle comment-only output
@@ -146,15 +128,8 @@ function rel() {
     [ -n "$log" ] && echo -e "## stdout: $cmdOutput" >> "$log"
   else
     # otherwise, run the command and let it print to the screen
-    if [ -n "$log" ]; then
-      # if we are logging, redirect stderr to stdout so that it gets captured in the log file
-      eval "$cmd" 2>&1 | tee -a "$log"
-      cmdExit=${PIPESTATUS[0]} # capture the exit status of the command (not tee)
-    else
-      # if we are not logging, just run the command normally
-      eval "$cmd"
-      cmdExit=$?
-    fi
+    eval "$cmd"
+    cmdExit=$?
   fi
   [ $timeit -eq 1 ] && toc=$(date +%s)
 
@@ -256,45 +231,55 @@ function on_error() {
 
 
 function archive_file() {
-    fname="${1}"
-    if [ -f "${fname}" ]; then
+    fname="$1"
+    if [ -f "$fname" ]; then
     	#stat and date are not portable across Linux and BSD...
       [ $( uname ) = Darwin ] && mtime=$( stat -f "%Sm" -t "%Y%m%d_%H%M" "${fname}" ) || mtime=$( date -r "${fname}" +%Y%m%d_%H%M )
-      mv "${fname}" "${fname}_${mtime}"
+      mv "$fname" "${fname}_${mtime}"
     fi
     return 0
 }
 
 
 #adapted from here: https://gist.github.com/aguy/2359833
+# usage: trap 'traperror "<name>" $? $LINENO "${BASH_LINENO[0]}" "$BASH_COMMAND" "${FUNCNAME[*]:-::}"' ERR
 function traperror () {
-    local err=$1 # error status
-    local line=$2 # LINENO
-    local linecallfunc=$3
-    local command="$4"
-    local funcstack="$5"
+    local step="${1:-unknown_step}"
+    local err=${2:-1} # error code -- default 1
+    local line="${3:-N/A}" # LINENO -- default N/A
+    local linecallfunc="${4:-N/A}"
+    local command="${5:-unknown_command}"
+    local funcstack="${6:-::}"
     local dotfile=".${step}_fail"
 
-    archive_file "${dotfile}_crash" #move any existing crash file out of the way
-    echo "$(date) $(hostname) $0: ERROR '$command' failed at line $line - exited with status: $err" | tee -a "${dotfile}_crash"
+    archive_file "$dotfile" #move any existing crash file out of the way
+    {
+      echo "$(date) $(hostname) $0: ERROR '$command' failed at line $line; exited with status: $err"
 
-    if [ "$funcstack" != "::" ]; then
-      echo -n "$0: DEBUG Error in ${funcstack} " | tee -a "${dotfile}_crash"
-	if [ "$linecallfunc" != "" ]; then
-	    echo "called at line $linecallfunc" | tee -a "${dotfile}_crash"
-	fi
-    fi
-    [ -n "$originalcwd" ] && echo -en "Initial working directory:\n  $originalcwd\n" | tee -a "${dotfile}_crash"
-    echo -en "\nCurrent working directory:\n  $PWD\n" | tee -a "${dotfile}_crash"
-    [ -n "$originalargs" ] && echo -en "\nArguments passed to script:\n  $originalargs\n\n" | tee -a "${dotfile}_crash"
+      if [[ "$funcstack" != "::" ]]; then
+        echo -n "$0: DEBUG Error in ${funcstack} "
+        [[ "$linecallfunc" != "N/A" ]] && echo "called at line $linecallfunc"
+        fi
+      fi
+      
+      echo -en "\nCurrent working directory:\n  $PWD\n" | tee -a "$dotfile"
+      [ -n "$pkg_dir" ] && echo "Location of BrainGnomes installation: $pkg_dir"
 
-    if [ -r "${logFile}" ]; then
-	echo -en "\n\nLast 10 lines of log file:\n---------\n\n" | tee -a "${dotfile}_crash" #add two newlines
-	tail -n 10 "${logFile}" | tee -a "${dotfile}_crash"
-    fi
+      if [ -r "$cmd_log" ]; then
+        echo -en "\n\nLast 10 lines of command log file:\n---------\n\n"
+        tail -n 10 "$cmd_log"
+      fi
 
-    if [ -r "preprocessFunctional_stderr" ]; then
-	echo -en "\n\nLast 10 lines of preprocessFunctional_stderr:\n---------\n\n" | tee -a "${dotfile}_crash"
-	tail -n 10 preprocessFunctional_stderr | tee -a "${dotfile}_crash"
-    fi
+      if [ -r "$stdout_log" ]; then
+        echo -en "\n\nLast 10 lines of stdout file:\n---------\n\n"
+        tail -n 10 "$stdout_log"
+      fi
+
+      if [ -r "$stderr_log" ]; then
+        echo -en "\n\nLast 10 lines of stderr file:\n---------\n\n"
+        tail -n 10 "$stderr_log"
+      fi
+    } | tee -a "$dotfile"
+
+    exit "$err"  
 }
