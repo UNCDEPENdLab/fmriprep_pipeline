@@ -48,10 +48,10 @@ fs_dir=$(dirname "$fs_license_file")
 ###
 # handle multi-session setup
 if [ -n "$ses_id" ]; then
-  out_dir=${loc_mrproc_root}/sub-${sub_id}/ses-${ses_id}
+  out_dir="${loc_mrproc_root}/sub-${sub_id}/ses-${ses_id}"
   ses_str="session $ses_id"
 else
-  out_dir=${loc_mrproc_root}/sub-${sub_id}
+  out_dir="${loc_mrproc_root}/sub-${sub_id}"
   ses_str=""
 fi
 mkdir -p "$out_dir"

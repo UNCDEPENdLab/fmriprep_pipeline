@@ -145,7 +145,7 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
   mriqc_id <- submit_step("mriqc", parent_ids = bids_conversion_ids)
 
   ## Handle fmriprep
-  fmriprep_id <- submit_step("fmriprep", parent_ids = bids_conversion_ids))
+  fmriprep_id <- submit_step("fmriprep", parent_ids = bids_conversion_ids)
 
   ## Handle aroma
   aroma_id <- submit_step("aroma", parent_ids = c(bids_conversion_ids, fmriprep_id))
@@ -273,9 +273,8 @@ submit_mriqc <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env
     sub_id = sub_id,
     ses_id = ses_id,
     loc_bids_root = scfg$bids_directory,
-    loc_mrproc_root = scfg$fmriprep_directory,
+    loc_mriqc_root = scfg$mriqc_directory,
     loc_scratch = scfg$scratch_directory,
-    templateflow_home = scfg$templateflow_home,
     cli_options = cli_options
   )
 

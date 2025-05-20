@@ -88,6 +88,13 @@ setup_study <- function(input = NULL, fields = NULL) {
     if (create) dir.create(scfg$fmriprep_directory, recursive = TRUE) # should probably force this to happen
   }
 
+  # location of fmriprep outputs -- enforce that this must be within the project directory
+  scfg$mriqc_directory <- file.path(scfg$project_directory, "mriqc_reports")
+  if (!checkmate::test_directory_exists(scfg$mriqc_directory)) {
+    create <- prompt_input(instruct = glue("The directory {scfg$mriqc_directory} does not exist. Would you like me to create it?\n"), type = "flag")
+    if (create) dir.create(scfg$mriqc_directory, recursive = TRUE) # should probably force this to happen
+  }
+
   scfg$log_directory <- file.path(scfg$project_directory, "logs")
   if (!checkmate::test_directory_exists(scfg$log_directory)) dir.create(scfg$log_directory, recursive = TRUE)
 

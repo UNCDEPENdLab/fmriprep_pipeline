@@ -1,55 +1,61 @@
 #!/bin/bash
-#PBS -l nodes=1:ppn=8
-#PBS -l walltime=12:00:00
-#PBS -A mnh5174_c_g_sc_default
-#PBS -o aci_output
-#PBS -e aci_output
-#PBS -N mriqc
+# Default SLURM requests if not overridden on command line
+#SBATCH -N 1
+#SBATCH -n 4
+#SBATCH --time=8:00:00
+#SBATCH --mem=32g
 
-set -e
-cd $PBS_O_WORKDIR
+set -eE  # 'E' ensures ERR trap inherits in functions/subshells
 
-####
-#setup compute environment
-[ -z "$pipedir" ] && pipedir="$PWD"
-source "${pipedir}/pipeline_functions"
+# source bash functions used in pipeline shell scripts
+[ -z "$pkg_dir" ] && echo "pkg_dir not set. Cannot locate required helper scripts" && exit 1
+source "${pkg_dir}/shell_functions"
 
-#in principle, we could pass all environment variables in with -v
-[ -z "$env_file" ] && env_file="${pipedir}/compute_environment.cfg" #set default
-[ ! -r "$env_file" ]  && echo "Cannot access compute config file ${env_file}" && exit 1
-source "$env_file" #setup relevant variables for this processing environment
+# Set trap for common termination signals
+trap 'trap_job_failure mriqc SIGTERM' SIGTERM
+trap 'trap_job_failure mriqc SIGINT' SIGINT
+trap 'trap_job_failure mriqc SIGHUP' SIGHUP
+trap 'trap_job_failure mriqc SIGQUIT' SIGQUIT
+trap 'traperror mriqc $? $LINENO ${BASH_LINENO[0]} "$BASH_COMMAND" $(printf "::%s" ${FUNCNAME[@]:-})' ERR
 
-[[ -n "${study_cfg}" && -r "${study_cfg}" ]] && source "${study_cfg}" #source a study config file if passed as environment variable
-
-#load in lab programs, including MRIQC
-#I would tend to avoid this since it creates a bit of a blackbox and may setup things you don't want.
-#I think mriqc needs ants, fsl, afni
-#source /gpfs/group/mnh5174/default/lab_resources/ni_path.bash
 
 #https://stackoverflow.com/questions/51026315/how-to-solve-unicodedecodeerror-in-python-3-6/51027262#51027262
-LANG=en_US.UTF-8
-export LANG
-
-command -v deactivate >/dev/null 2>&1 && deactivate #exit existing virtual environment if active
-command -v module >/dev/null 2>&1 && module unload python #make sure no system python modules are loaded    
-
-#these appear to be the immediate dependencies of mriqc
-[ -n "$torque_modules_root" ] && module use "$torque_modules_root"
-[ -n "$afni_module" ] && module load "$afni_module"
-#[ -n "$fsl_module" ] && module load "$fsl_module"
-[ -n "$ants_module" ] && module load "$ants_module"
-
-#[ -n "$freesurfer_module" ] && module load "$freesurfer_module"
-module load fsl/5.0.11 #Using version 6 of FSL creates problems
-
-#load version 3 of Python (since the default is version 2, which doesn't work w/MRIQC)
-#source /gpfs/group/mnh5174/default/lab_resources/lab_python3/bin/activate
+#LANG=en_US.UTF-8
+#export LANG
 
 ####
-#verify necessary arguments
-[ -z "${mriqc_location}" ] && echo "No mriqc_location variable set." && exit 1
-[ -z "${loc_root}" ] && echo "No loc_root variable set." && exit 1
+#verify required arguments
+[ -z "$mriqc_container" ] && echo "mriqc_container not set. Exiting" && exit 1
+[ ! -f "$mriqc_container" ] && echo "mriqc_container $mriqc_container not found. Exiting" && exit 1
+[ ! -r "$mriqc_container" ] && echo "mriqc_container $mriqc_container not readable. Exiting" && exit 1
+[ -z "$loc_mriqc_root" ] && echo "loc_mriqc_root not set. Exiting." && exit 1
+[ -z "$loc_scratch" ] && echo "loc_scratch not set. Exiting." && exit 1
+[ -z "$loc_bids_root" ] && echo "loc_bids_root not set. Exiting." && exit 1
+[ ! -d "$loc_bids_root" ] && echo "loc_bids_root $loc_bids_root not found. Exiting" && exit 1
+[ ! -r "$loc_bids_root" ] && echo "loc_bids_root $loc_bids_root not readable. Exiting" && exit 1
+[ -z "$templateflow_home" ] && echo "templateflow_home not set. Exiting." && exit 1
+[ -z "$sub_id" ] && echo "sub_id not set. Exiting." && exit 1
+[[ "$debug_pipeline" == "TRUE" ]] && debug_pipeline=1 || debug_pipeline=0 # set debug_pipeline to 1 if it is set to TRUE, otherwise set it to 0
+
+###
+out_dir="${loc_mriqc_root}/sub-${sub_id}"
+mkdir -p "$out_dir"
+cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
+
 
 ####
-[[ "$debug_pipeline" -eq 1 ]] && rel_suffix=c #if debug_pipeline is 1, only echo command to log, don't run it
-rel "${mriqc_location} ${loc_root}/bids/ ${loc_root}/mriqc_IQMs/ participant --participant-label $sub -w ${loc_root}/mriqc_tempfiles && date \"+%m%d%y@%H:%M\" > $loc_bids_root/sub-$sub/.mriqc.complete" $rel_suffix
+[[ "$debug_pipeline" -eq 1 ]] && rel_flag=c #if debug_pipeline is 1, only echo command to log, don't run it
+[[ -n "$cmd_log" ]] && cmd_log="-l $cmd_log" # if cmd_log is set, pass it to rel
+
+singularity_cmd="singularity run --cleanenv -B '$loc_bids_root' -B '$loc_scratch' \
+  -B '$loc_mriqc_root' '$mriqc_container'"
+
+rel c $cmd_log Starting mriqc for subject $sub_id at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the mriqc command
+
+rel $rel_flag $cmd_log $singularity_cmd \
+    "$loc_bids_root" "$loc_mriqc_root/" participant \
+    $cli_options # all options setup by submit_mriqc()
+
+[[ $? -eq 0 && $debug_pipeline -eq 0 ]] && date +"%Y-%m-%d %H:%M:%S" > "${out_dir}/.mriqc_complete"
+
+rel c $cmd_log Finished mriqc for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the end of the mriqc command
