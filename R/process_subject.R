@@ -24,7 +24,7 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
 
   sub_id <- sub_cfg$sub_id[1L]
   bids_sub_dir <- sub_cfg$bids_sub_dir[1L]
-  lg <- get_subject_logger(sub_id)
+  lg <- get_subject_logger(scfg, sub_id)
   
   bids_conversion_ids <- bids_validation_id <- mriqc_id <- fmriprep_id <- aroma_id <- postprocess_ids <- NULL
 
@@ -69,7 +69,7 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
       pkg_dir = system.file(package = "BGprocess"), # root of inst folder for installed R package
       cmd_log = lg$appenders$subject_logger$destination, # write to same file as subject lgr
       stdout_log = glue("{scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.out"),
-      stderr_log = glue("{scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.err"),
+      stderr_log = glue("{scfg$log_directory}/sub-{sub_id}/{jobid_str}-%j-{format(Sys.time(), '%d%b%Y_%H.%M.%S')}.err")
     )
     sched_script <- get_job_script(scfg, name)
     sched_args <- get_job_sched_args(scfg, name)
@@ -213,9 +213,7 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
     return(NULL)
   }
 
-  #lg <- get_subject_logger(sub_dir)
-
-  if (isTRUE(scfg$run_aroma) && !grepl("MNI152NLin6Asym:res-2", scfg$fmriprep$output_spaces, fixed = TRUE)) {
+  if (isTRUE(scfg$run_aroma) && (is.null(scfg$fmriprep$output_spaces) || !grepl("MNI152NLin6Asym:res-2", scfg$fmriprep$output_spaces, fixed = TRUE))) {
     message("Adding MNI152NLin6Asym:res-2 to output spaces for fmriprep to allow AROMA to run.")
     scfg$fmriprep$output_spaces <- paste(scfg$fmriprep$output_spaces, "MNI152NLin6Asym:res-2")
   }
@@ -228,7 +226,7 @@ submit_fmriprep <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, 
     glue("--fs-license-file {scfg$fmriprep$fs_license_file}"),
     glue("--output-spaces {scfg$fmriprep$output_spaces}"),
     glue("--mem {scfg$fmriprep$memgb*1000}") # convert to MB
-  ))
+  ), collapse=TRUE)
 
   env_variables <- c(
     env_variables,
@@ -265,7 +263,7 @@ submit_mriqc <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env
     glue("--participant_label {sub_id}"),
     glue("-w {scfg$scratch_directory}"),
     glue("--mem-gb {scfg$mriqc$memgb}")
-  ))
+  ), collapse=TRUE)
 
   env_variables <- c(
     env_variables,
@@ -299,14 +297,6 @@ submit_aroma <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env
     return(NULL)
   }
 
-  
-  #lg <- get_subject_logger(sub_dir)
-
-  if (isTRUE(scfg$run_aroma) && !grepl("MNI152NLin6Asym:res-2", scfg$fmriprep$output_spaces, fixed = TRUE)) {
-    message("Adding MNI152NLin6Asym:res-2 to output spaces for fmriprep to allow AROMA to run.")
-    scfg$fmriprep$output_spaces <- paste(scfg$fmriprep$output_spaces, "MNI152NLin6Asym:res-2")
-  }
-
   # for now, inherit key options from fmriprep rather than asking user to respecify
   # https://fmripost-aroma.readthedocs.io/latest/usage.html
 
@@ -317,7 +307,7 @@ submit_aroma <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env
     glue("-w {scfg$scratch_directory}"),
     glue("--output-spaces {scfg$fmriprep$output_spaces}"),
     glue("--mem {scfg$aroma$memgb*1000}") # convert to MB
-  ))
+  ), collapse=TRUE)
 
   env_variables <- c(
     env_variables,

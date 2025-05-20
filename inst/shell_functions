@@ -259,7 +259,6 @@ function traperror () {
       if [[ "$funcstack" != "::" ]]; then
         echo -n "$0: DEBUG Error in ${funcstack} "
         [[ "$linecallfunc" != "N/A" ]] && echo "called at line $linecallfunc"
-        fi
       fi
       
       echo -en "\nCurrent working directory:\n  $PWD\n" | tee -a "$dotfile"

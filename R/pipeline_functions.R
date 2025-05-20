@@ -101,11 +101,13 @@ get_nested_values <- function(lst, key_strings, sep = "/", simplify = TRUE) {
 #'   intended new values
 #' @param args a character vector of existing CLI arguments
 #' @param new_values a character vector of new CLI arguments to be substituted into `args`
+#' @param collapse a flag indicating whether to collapse the return argument into a single string
 #' @return a modified character vector of CLI arguments
 #' @importFrom checkmate assert_character
 #' @keywords internal
-set_cli_options <- function(args = NULL, new_values = NULL) {
+set_cli_options <- function(args = NULL, new_values = NULL, collapse=FALSE) {
   checkmate::assert_character(new_values)
+  if (is.list(args) && length(args) ==  0L) args <- NULL # convert empty list to NULL
 
   # helper to convert a character vector of CLI arguments to a parsed data.frame with
   # arguments and values
@@ -217,6 +219,11 @@ set_cli_options <- function(args = NULL, new_values = NULL) {
     args_df <- args_to_df(args)
     new_values_df <- args_to_df(new_values)
     args <- df_to_args(update_cli_args(args_df, new_values_df))
+  }
+
+  # convert into a single cli string if requested
+  if (isTRUE(collapse)) {
+    args <- paste(args, collapse=" ")
   }
 
   return(args)

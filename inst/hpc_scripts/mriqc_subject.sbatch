@@ -33,7 +33,6 @@ trap 'traperror mriqc $? $LINENO ${BASH_LINENO[0]} "$BASH_COMMAND" $(printf "::%
 [ -z "$loc_bids_root" ] && echo "loc_bids_root not set. Exiting." && exit 1
 [ ! -d "$loc_bids_root" ] && echo "loc_bids_root $loc_bids_root not found. Exiting" && exit 1
 [ ! -r "$loc_bids_root" ] && echo "loc_bids_root $loc_bids_root not readable. Exiting" && exit 1
-[ -z "$templateflow_home" ] && echo "templateflow_home not set. Exiting." && exit 1
 [ -z "$sub_id" ] && echo "sub_id not set. Exiting." && exit 1
 [[ "$debug_pipeline" == "TRUE" ]] && debug_pipeline=1 || debug_pipeline=0 # set debug_pipeline to 1 if it is set to TRUE, otherwise set it to 0
 
@@ -41,7 +40,6 @@ trap 'traperror mriqc $? $LINENO ${BASH_LINENO[0]} "$BASH_COMMAND" $(printf "::%
 out_dir="${loc_mriqc_root}/sub-${sub_id}"
 mkdir -p "$out_dir"
 cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
-
 
 ####
 [[ "$debug_pipeline" -eq 1 ]] && rel_flag=c #if debug_pipeline is 1, only echo command to log, don't run it
