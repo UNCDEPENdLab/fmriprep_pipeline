@@ -18,6 +18,9 @@ trap 'trap_job_failure mriqc SIGHUP' SIGHUP
 trap 'trap_job_failure mriqc SIGQUIT' SIGQUIT
 trap 'traperror mriqc $? $LINENO ${BASH_LINENO[0]} "$BASH_COMMAND" $(printf "::%s" ${FUNCNAME[@]:-})' ERR
 
+# add the job id to the log file variables in case of crash
+stdout_log="${stdout_log//%j/$SLURM_JOB_ID}"
+stderr_log="${stderr_log//%j/$SLURM_JOB_ID}"
 
 #https://stackoverflow.com/questions/51026315/how-to-solve-unicodedecodeerror-in-python-3-6/51027262#51027262
 #LANG=en_US.UTF-8

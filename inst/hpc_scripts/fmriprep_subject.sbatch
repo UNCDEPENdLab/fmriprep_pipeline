@@ -23,6 +23,11 @@ trap 'traperror fmriprep $? $LINENO ${BASH_LINENO[0]} "$BASH_COMMAND" $(printf "
 
 ncores=$SLURM_NTASKS
 
+# add the job id to the log file variables in case of crash
+stdout_log="${stdout_log//%j/$SLURM_JOB_ID}"
+stderr_log="${stderr_log//%j/$SLURM_JOB_ID}"
+
+
 ####
 #verify required arguments
 [ -z "$fmriprep_container" ] && echo "fmriprep_container not set. Exiting" && exit 1

@@ -17,9 +17,9 @@ trap 'trap_job_failure heudiconv SIGINT' SIGINT
 trap 'trap_job_failure heudiconv SIGHUP' SIGHUP
 trap 'trap_job_failure heudiconv SIGQUIT' SIGQUIT
 
-# [[ -n "${study_cfg}" && -r "${study_cfg}" ]] && source "${study_cfg}" #source a study config file if passed as environment variable
-# [ -n "$torque_modules_root" ] && module use "$torque_modules_root"
-# [ -n "$r_module" ] && module load "$r_module"
+# add the job id to the log file variables in case of crash
+stdout_log="${stdout_log//%j/$SLURM_JOB_ID}"
+stderr_log="${stderr_log//%j/$SLURM_JOB_ID}"
 
 ####
 #verify necessary arguments

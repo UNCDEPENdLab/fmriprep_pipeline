@@ -16,13 +16,16 @@ trap 'trap_job_failure aroma SIGTERM' SIGTERM
 trap 'trap_job_failure aroma SIGINT' SIGINT
 trap 'trap_job_failure aroma SIGHUP' SIGHUP
 trap 'trap_job_failure aroma SIGQUIT' SIGQUIT
-#trap 'traperror $? $LINENO $BASH_LINENO "$BASH_COMMAND" $(printf "::%s" ${FUNCNAME[@]:-})' ERR
-trap 'on_error $?' ERR
+trap 'traperror aroma $? $LINENO ${BASH_LINENO[0]} "$BASH_COMMAND" $(printf "::%s" ${FUNCNAME[@]:-})' ERR
 
 # default nthreads to however many cores we have $SLURM_SOMETHING
 [ -z "$aroma_nthreads" ] && echo "No aroma_nthreads environment variable. Defaulting to 4" && aroma_nthreads=4
 
 ncores=$SLURM_NTASKS
+
+# add the job id to the log file variables in case of crash
+stdout_log="${stdout_log//%j/$SLURM_JOB_ID}"
+stderr_log="${stderr_log//%j/$SLURM_JOB_ID}"
 
 ####
 #verify required arguments
@@ -34,21 +37,11 @@ ncores=$SLURM_NTASKS
 [ -z "$loc_bids_root" ] && echo "loc_bids_root not set. Exiting." && exit 1
 [ ! -d "$loc_bids_root" ] && echo "loc_bids_root $loc_bids_root not found. Exiting" && exit 1
 [ ! -r "$loc_bids_root" ] && echo "loc_bids_root $loc_bids_root not readable. Exiting" && exit 1
-[ -z "$templateflow_home" ] && echo "templateflow_home not set. Exiting." && exit 1
 [ -z "$sub_id" ] && echo "sub_id not set. Exiting." && exit 1
 [[ "$debug_pipeline" == "TRUE" ]] && debug_pipeline=1 || debug_pipeline=0 # set debug_pipeline to 1 if it is set to TRUE, otherwise set it to 0
 
 ###
-# handle multi-session setup
-if [ -n "$ses_id" ]; then
-  out_dir=${loc_bids_root}/sub-${sub_id}/ses-${ses_id}
-  ses_flag="--ses $ses_id"
-  ses_str="session $ses_id"
-else
-  out_dir=${loc_bids_root}/sub-${sub_id}
-  ses_flag=""
-  ses_str=""
-fi
+out_dir="${loc_mrproc_root}/sub-${sub_id}"
 mkdir -p "$out_dir"
 cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
 
@@ -57,11 +50,9 @@ cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
 [[ -n "$cmd_log" ]] && cmd_log="-l $cmd_log" # if cmd_log is set, pass it to rel
 
 singularity_cmd="singularity run --cleanenv -B '$loc_bids_root' -B '$loc_scratch' \
-  -B '$loc_mrproc_root' -B '$templateflow_home' '$aroma_container'"
+  -B '$loc_mrproc_root' '$aroma_container'"
 
 rel c $cmd_log Starting aroma for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the aroma command
-
-rel $rel_flag $cmd_log export APPTAINERENV_TEMPLATEFLOW_HOME="$templateflow_home" # set the environment variable for templateflow in the singularity container
 
 #singularity exec --cleanenv -B "$loc_bids_root" -B "$loc_scratch" \
 #    -B "$loc_mrproc_root" -B "$templateflow_home" "$aroma_container" aroma \
