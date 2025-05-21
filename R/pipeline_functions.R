@@ -130,20 +130,22 @@ set_cli_options <- function(args = NULL, new_values = NULL, collapse=FALSE) {
           token_naked <- sub("^--?", "", token)
 
           if (grepl("=", token_naked)) {
+            has_equals <- TRUE
             parts <- strsplit(token_naked, "=", fixed = TRUE)[[1]]
             lhs <- parts[1]
-            rhs <- parts[2]
-            has_equals <- TRUE
+            rhs <- parts[2]            
           } else {
-            lhs <- token_naked
-            # Check if next token exists and is *not* another option (doesn't start with hyphen)
-            if (j + 1 <= length(tokens) && !grepl("^-", tokens[j + 1])) {
-              rhs <- tokens[j + 1]
-              j <- j + 1 # consume the rhs token
-            } else {
-              rhs <- NA
-            }
             has_equals <- FALSE
+            lhs <- token_naked
+            rhs_vals <- character(0)
+          
+            # Gather all following tokens until next one starts with "-" or end of input
+            while (j + 1 <= length(tokens) && !grepl("^-", tokens[j + 1])) {
+              rhs_vals <- c(rhs_vals, tokens[j + 1])
+              j <- j + 1
+            }
+          
+            rhs <- if (length(rhs_vals) > 0) paste(rhs_vals, collapse = " ") else NA
           }
 
           results[[length(results) + 1]] <- data.frame(

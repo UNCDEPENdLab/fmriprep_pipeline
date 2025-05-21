@@ -317,7 +317,6 @@ submit_aroma <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env
     loc_bids_root = scfg$bids_directory,
     loc_mrproc_root = scfg$fmriprep_directory,
     loc_scratch = scfg$scratch_directory,
-    templateflow_home = scfg$templateflow_home,
     cli_options = cli_options
   )
 
