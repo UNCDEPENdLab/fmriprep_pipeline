@@ -57,9 +57,12 @@ rel c $cmd_log Starting aroma for subject $sub_id $ses_str at $(date +"%Y-%m-%d 
 #singularity exec --cleanenv -B "$loc_bids_root" -B "$loc_scratch" \
 #    -B "$loc_mrproc_root" -B "$templateflow_home" "$aroma_container" aroma \
 
+# to trap sigterm, we need to background the main compute and then wait (during which time signals are received)
 rel $rel_flag $cmd_log $singularity_cmd \
     "$loc_bids_root" "$loc_mrproc_root/" participant \
-    $cli_options # all options setup by submit_aroma()
+    $cli_options & # all options setup by submit_aroma()
+
+wait
 
 [[ $? -eq 0 && $debug_pipeline -eq 0 ]] && date +"%Y-%m-%d %H:%M:%S" > ${out_dir}/.aroma_complete
 

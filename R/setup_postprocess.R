@@ -3,7 +3,7 @@
 #' @param fields a character vector of fields to be prompted for. If `NULL`, all fields will be prompted for.
 #' @return a modified version of `scfg` with the `$postprocess` field populated
 #' @keywords internal
-setup_postprocessing <- function(scfg = list(), fields = NULL) {
+setup_postprocess <- function(scfg = list(), fields = NULL) {
   if (!checkmate::test_class(scfg, "bg_study_cfg")) {
     stop("scfg input must be a bg_study_cfg object produced by setup_study")
   }

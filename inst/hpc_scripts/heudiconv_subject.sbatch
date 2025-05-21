@@ -60,11 +60,14 @@ rel c $cmd_log Starting heudiconv for subject $sub_id $ses_str at $(date +"%Y-%m
 
 singularity_cmd="singularity run --cleanenv -B $loc_bids_root -B $loc_sub_dicoms -B $heuristic_dir $heudiconv_container"
 
+# to trap sigterm, we need to background the main compute and then wait (during which time signals are received)
 # we now use --files to specify the dicoms to convert rather than -d since we don't want to assume
 # the dicoms are in a specific directory structure (esp. in terms of level of nesting).
 rel $rel_flag $cmd_log $singularity_cmd --files $loc_sub_dicoms -s $sub_id $ses_flag \
   -f $heudiconv_heuristic -c dcm2niix \
-  -o $loc_bids_root --bids 
+  -o $loc_bids_root --bids &
+
+wait
 
 # write complete file if the command was successful and debug_pipeline is not set
 [[ $? -eq 0 && $debug_pipeline -eq 0 ]] && date +"%Y-%m-%d %H:%M:%S" > ${out_dir}/.heudiconv_complete
@@ -78,7 +81,3 @@ rel c $cmd_log Finished heudiconv for subject $sub_id $ses_str at $(date +"%Y-%m
 #   /proj/mnhallqlab/users/michael/fmriprep_pipeline_setup/heudiconv_latest.sif \
 #   --files /proj/mnhallqlab/projects/preproc_pipeline_test_data/dicoms/540311 -f heuristic.py -s 540311 -c dcm2niix --bids \
 #   -o /proj/mnhallqlab/projects/preproc_pipeline_test_data/data_BIDS
-
-# old bare-metal command
-# ${heudiconv_location} -d ${loc_dicom_root}/{subject}/*/*.dcm -s $sub_id -f ${heudiconv_heuristic} -c dcm2niix -o ${loc_bids_root} -b && date \"+%m%d%y@%H:%M\" > ${loc_bids_root}/sub-${sub_id}/.heudiconv.complete
-# ${pipedir}/add_intendedfor_bold ${loc_bids_root}/sub-${sub_id} #add IntendedFor field to FMAP jsons, pointing to all BOLD

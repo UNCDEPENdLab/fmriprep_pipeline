@@ -53,9 +53,12 @@ singularity_cmd="singularity run --cleanenv -B '$loc_bids_root' -B '$loc_scratch
 
 rel c $cmd_log Starting mriqc for subject $sub_id at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the mriqc command
 
+# to trap sigterm, we need to background the main compute and then wait (during which time signals are received)
 rel $rel_flag $cmd_log $singularity_cmd \
     "$loc_bids_root" "$loc_mriqc_root/" participant \
-    $cli_options # all options setup by submit_mriqc()
+    $cli_options & # all options setup by submit_mriqc()
+
+wait
 
 [[ $? -eq 0 && $debug_pipeline -eq 0 ]] && date +"%Y-%m-%d %H:%M:%S" > "${out_dir}/.mriqc_complete"
 

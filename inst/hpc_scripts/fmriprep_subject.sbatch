@@ -77,9 +77,12 @@ rel $rel_flag $cmd_log export APPTAINERENV_FS_LICENSE="$fs_license_file" # set t
 #singularity exec --cleanenv -B "$loc_bids_root" -B "$loc_scratch" \
 #    -B "$loc_mrproc_root" -B "$templateflow_home" -B "$fs_dir" "$fmriprep_container" fmriprep \
 
+# to trap sigterm, we need to background the main compute and then wait (during which time signals are received)
 rel $rel_flag $cmd_log $singularity_cmd \
     "$loc_bids_root" "$loc_mrproc_root/" participant \
-    $cli_options # all options setup by submit_fmriprep()
+    $cli_options & # all options setup by submit_fmriprep()
+
+wait
 
 [[ $? -eq 0 && $debug_pipeline -eq 0 ]] && date +"%Y-%m-%d %H:%M:%S" > ${out_dir}/.fmriprep_complete
 

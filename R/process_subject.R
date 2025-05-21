@@ -305,8 +305,8 @@ submit_aroma <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env
     glue("--omp-nthreads {scfg$aroma$ncores}"),
     glue("--participant_label {sub_id}"),
     glue("-w {scfg$scratch_directory}"),
-    glue("--output-spaces {scfg$fmriprep$output_spaces}"),
-    glue("--mem {scfg$aroma$memgb*1000}") # convert to MB
+    glue("--mem {scfg$aroma$memgb*1000}"), # convert to MB
+    glue("--derivatives fmriprep={scfg$fmriprep_directory}")
   ), collapse=TRUE)
 
   env_variables <- c(
@@ -337,7 +337,6 @@ submit_postprocess <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NUL
   sched_args <- get_job_sched_args(scfg, "postprocess")
   env_variables <- c(
     env_variables,
-    heudiconv_container = scfg$compute_environment$heudiconv_container,
     loc_sub_dicoms = scfg$dicom_directory,
     loc_bids_root = scfg$bids_directory,
     heudiconv_heuristic = scfg$heudiconv$heuristic_file,

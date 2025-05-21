@@ -159,7 +159,7 @@ setup_study <- function(input = NULL, fields = NULL) {
   scfg <- setup_fmriprep(scfg, fields)
   scfg <- setup_mriqc(scfg, fields)
   if (isTRUE(scfg$run_aroma)) scfg <- setup_aroma(scfg, fields)
-  scfg <- setup_postprocessing(scfg, fields)
+  scfg <- setup_postprocess(scfg, fields)
 
   return(scfg)
 }

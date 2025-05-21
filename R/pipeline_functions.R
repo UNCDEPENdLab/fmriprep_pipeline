@@ -730,3 +730,122 @@ populate_defaults <- function(target = NULL, defaults) {
 
   return(target)
 }
+
+#' Remove NIfTI files if they exist
+#'
+#' @param files A character vector of file paths (with or without `.nii` or `.nii.gz` extensions).
+#' @details 
+#'   Deletes one or more NIfTI files from disk. If a file path is provided
+#'   without an extension, `.nii.gz` is appended before checking for existence.
+#'
+#' @return Invisibly returns \code{NULL}. Used for its side effect of deleting files.
+#' @keywords internal
+#' @importFrom checkmate assert_character test_file_exists
+rm_niftis <- function(files=NULL) {
+  if (is.null(files)) return(invisible(NULL))
+  checkmate::assert_character(files)
+  for (ff in files) {
+    tnif <- ifelse(grepl(".*\\.nii(\\.gz)?$", ff), ff, paste0(ff, ".nii.gz")) # add suffix if none provided
+    if (checkmate::test_file_exists(tnif)) unlink(tnif)
+  }
+}
+
+
+run_fsl_command <- function(args, fsldir=NULL, echo=TRUE, run=TRUE, log_file=NULL, intern=FALSE, stop_on_fail=TRUE, singularity_img=NULL) {
+  
+  if (!is.null(singularity_img)) {
+    # if we are using a singularity container, always look inside the container for FSLDIR
+    checkmate::assert_file_exists(singularity_img, access = "r")
+    fsldir <- system(glue("singularity exec {singularity_img} printenv FSLDIR"), intern = TRUE)
+    if (length(fsldir) == 0L) stop("Cannot find FSLDIR inside singularity container")
+  } else if (is.null(fsldir)) {
+    # look for FSLDIR in system environment if not passed in    
+    fsldir <- Sys.getenv("FSLDIR")
+    if (isFALSE(nzchar(fsldir))) {
+      # check for FSLDIR in .bashrc or .profile
+      bashrc_fsldir <- ""
+      if (file.exists("~/.profile")) {
+        bashrc_fsldir <- system("source ~/.profile && echo $FSLDIR", intern = TRUE)
+      }
+
+      if (nzchar(bashrc_fsldir) && file.exists("~/.bashrc")) {
+        bashrc_fsldir <- system("source ~/.bashrc && echo $FSLDIR", intern = TRUE)
+      }
+
+      # Fallback: look for location of fsl feat on PATH
+      if (nzchar(bashrc_fsldir)) {
+        feat_loc <- system("command -v feat", intern = TRUE)
+        exit_code <- attr(feat_loc, "status")
+        if (!is.null(exit_code) && exit_code == 1) {
+          warning("Could not find FSL using FSLDIR or system PATH. Defaulting to Defaulting to /usr/local/fsl.")
+          fsldir <- "/usr/local/fsl"
+        } else {
+          fsldir <- dirname(dirname(feat_loc))
+        }
+      }
+    }
+  }
+
+  Sys.setenv(FSLDIR=fsldir) #export to R environment
+  fslsetup <- paste0("FSLDIR=", fsldir, "; PATH=${FSLDIR}/bin:${PATH}; . ${FSLDIR}/etc/fslconf/fsl.sh; ${FSLDIR}/bin/")
+
+  # Command to run (basic or singularity-wrapped)
+  base_cmd <- paste0(fslsetup, " ", args)
+
+  if (!is.null(singularity_img)) {
+    # Get absolute working directory to mount
+    workdir <- normalizePath(getwd())
+    singularity_cmd <- paste(
+      "singularity exec",
+      paste0("--bind ", workdir, ":", workdir),
+      singularity_img,
+      "bash -c",
+      shQuote(base_cmd)
+    )
+    full_cmd <- singularity_cmd
+  } else {
+    full_cmd <- base_cmd
+  }
+
+  ofile <- tempfile(pattern="stdout")
+  efile <- tempfile(pattern = "stderr")
+  full_cmd <- paste(full_cmd, ">", shQuote(ofile), "2>", shQuote(efile))
+
+  #cat("FSL command: ", full_cmd, "\n")
+  if (!is.null(log_file)) cat(args, file=log_file, append=TRUE, sep="\n")
+  if (isTRUE(echo)) cat(args, "\n")
+  
+  retcode <- if (isTRUE(run)) system(full_cmd) else 0 # return 0 if not run
+
+  if (file.exists(efile)) {
+    stderr <- readLines(efile)
+    if (identical(character(0), stderr)) stderr <- ""
+  } else {
+    stderr <- ""
+  }
+
+  if (file.exists(ofile)) {
+    stdout <- readLines(ofile)
+    if (identical(character(0), stdout)) stdout <- ""
+  } else {
+    stdout <- ""
+  }
+
+  to_return <- retcode # return exit code of command
+  # if specified, switch to stdout as return
+  if (isTRUE(intern)) {
+    to_return <- stdout # return output of command
+    attr(to_return, "retcode") <- retcode
+  }
+
+  attr(to_return, "stdout") <- stdout
+  attr(to_return, "stderr") <- stderr
+
+  if (retcode != 0) {    
+    errmsg <- glue("run_fsl_command failed with exit code: {retcode}, stdout: {paste(stdout, collapse='\n')}, stderr: {paste(stderr, collapse='\n')}")
+    cat(errmsg, "\n", file = log_file, append = TRUE)
+    if (isTRUE(stop_on_fail)) stop(errmsg)
+  }
+
+  return(to_return)
+}
