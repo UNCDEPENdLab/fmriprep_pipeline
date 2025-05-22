@@ -496,7 +496,7 @@ setup_bids_conversion <- function(scfg, fields = NULL) {
 setup_aroma <- function(scfg, fields = NULL) {
   defaults <- list(
     memgb = 32,
-    nhours = 2,
+    nhours = 24,
     ncores = 1,
     cli_options = "",
     sched_args = ""

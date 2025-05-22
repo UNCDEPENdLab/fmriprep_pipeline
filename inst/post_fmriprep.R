@@ -44,40 +44,6 @@ to_log <- function(str=NULL, log_file=NULL, stdout=TRUE) {
   return(invisible(NULL))
 }
 
-
-
-# matrix must be time x units/regions
-mat_to_nii <- function(mat, ni_out="mat") {
-  require(oro.nifti)
-  if (is.data.frame(mat)) mat <- as.matrix(mat)
-  # this always puts regressors along the x dimension; y and z are singletons
-  ydim <- zdim <- 1 # size of y and z dimensions
-  xsz <- ysz <- zsz <- 1 # voxel size in x y z
-  tr <- 1
-  xorigin <- yorigin <- zorigin <- 0
-
-  run_fsl_command(glue("fslcreatehd {ncol(mat)} {ydim} {zdim} {nrow(mat)} {xsz} {ysz} {zsz} {tr} {xorigin} {yorigin} {zorigin} 64 {ni_out}"), singularity_img = fsl_img)
-
-  ## read empty NIfTI into R
-  nif <- readNIfTI(ni_out, reorient = FALSE)
-  nif <- drop_img_dim(nif) # need to cleanup dim_ attribute to avoid writeNIfTI failure
-
-  # populate nifti -- need to transpose to be consistent with column-wise array filling
-  nif@.Data <- array(t(mat), dim = c(ncol(mat), 1, 1, nrow(mat))) # add singleton dimensions for y and z
-  nif[is.na(nif)] <- 0 # cannot handle missingness in NIfTIs
-
-  # write NIfTI with regressors back to file
-  writeNIfTI(nif, filename = ni_out) # this returns the filename to the caller
-}
-
-nii_to_mat <- function(ni_in) {
-  checkmate::assert_file_exists(ni_in)
-
-  nii <- readNIfTI(ni_in, reorient = FALSE, rescale_data = FALSE)
-  mat <- t(nii[, 1, 1, ]) # x and z -- make back into time x variables
-  return(mat)
-}
-
 out_file_exists <- function(in_file, prefix, overwrite=TRUE) {
   # helper subfunction to enforce hyphen after initial postprocessing prefix
   p <- function(in_file, prefix) {
@@ -105,8 +71,6 @@ out_file_exists <- function(in_file, prefix, overwrite=TRUE) {
   }
   return(list(out_file=out_file, skip=skip))
 }
-
-
 
 
 # function to create a loose brain mask using the BET + 98/2 + dilate approach of FSL
@@ -146,36 +110,6 @@ compute_brain_mask <- function(in_file, log_file = NULL) {
 
 
 
-get_image_quantile <- function(in_file, brain_mask=NULL, quantile=50, exclude_zero=FALSE, log_file=NULL) {
-  # checkmate::assert_file_exists(in_file)
-  checkmate::assert_number(quantile, lower = 0, upper = 100)
-  pstr <- ifelse(isTRUE(exclude_zero), "-P", "-p")
-  if (is.null(brain_mask)) {
-     quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} {pstr} {quantile}"), intern = TRUE, log_file = log_file, singularity_img = fsl_img))
-  } else {
-    if (!checkmate::test_file_exists(brain_mask)) checkmate::assert_file_exists(paste0(brain_mask, ".nii.gz"))
-    quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} -k {brain_mask} {pstr} {quantile}"), intern = TRUE, log_file = log_file, singularity_img = fsl_img))
-  }
-  return(quantile_value)
-}
-
-
-
-
-apply_mask <- function(in_file, mask_file, prefix="m", overwrite=FALSE, log_file=NULL) {
-  checkmate::assert_file_exists(mask_file)
-  checkmate::assert_string(prefix)
-
-  res <- out_file_exists(in_file, prefix, overwrite)
-  if (isTRUE(res$skip)) {
-    return(res$out_file) # skip out
-  } else {
-    out_file <- res$out_file
-  }
-
-  run_fsl_command(glue("fslmaths {in_file} -mas {mask_file} {out_file} -odt float"), log_file = log_file, singularity_img = fsl_img)
-  return(out_file)
-}
 
 get_fmriprep_outputs <- function(in_file) {
   if (grepl("_space-", in_file)) {

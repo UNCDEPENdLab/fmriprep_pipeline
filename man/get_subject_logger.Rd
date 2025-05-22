@@ -4,7 +4,7 @@
 \alias{get_subject_logger}
 \title{This function returns an lgr object corresponding to logging for a single subject directory}
 \usage{
-get_subject_logger(scfg, sub_dir)
+get_subject_logger(scfg, sub_id)
 }
 \arguments{
 \item{scfg}{The study configuration object}

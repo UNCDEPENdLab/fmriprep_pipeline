@@ -96,6 +96,79 @@ get_nested_values <- function(lst, key_strings, sep = "/", simplify = TRUE) {
   return(ret)
 }
 
+#' Parse command-line arguments into a structured data frame
+#'
+#' Converts a character vector of CLI-style arguments into a data frame with fields for position,
+#' argument name, value, number of hyphens, and whether the argument used an equals sign.
+#'
+#' @param arg_vec A character vector of shell-style argument strings (e.g., \code{"--arg=value"} or \code{"--arg value"}).
+#'
+#' @return A data frame with one row per parsed argument and the following columns:
+#' \describe{
+#'   \item{argpos}{The index of the original string in the input vector.}
+#'   \item{lhs}{The left-hand side of the argument (name).}
+#'   \item{rhs}{The right-hand side of the argument (value), or \code{NA} if none found.}
+#'   \item{has_equals}{Logical; \code{TRUE} if the argument used \code{=}, otherwise \code{FALSE}.}
+#'   \item{nhyphens}{The number of hyphens used in the argument prefix (1 or 2).}
+#' }
+#'
+#' @details Supports both \code{--arg=value} and \code{--arg value} formats. Multi-token values
+#' following a key are collapsed into a single space-separated string.
+#'
+#' @keywords internal
+#' @importFrom checkmate assert_character
+args_to_df <- function(arg_vec = NULL) {
+  checkmate::assert_character(arg_vec)
+  # if (is.character(arg_vec)) arg_vec <- list(arg_vec) # allow character vector input
+  results <- list()
+
+  # Split the string by whitespace to get individual arguments
+  all_split <- strsplit(arg_vec, "\\s+")
+
+  for (i in seq_along(arg_vec)) {
+    tokens <- all_split[[i]]
+    j <- 1
+    while (j <= length(tokens)) {
+      token <- tokens[j]
+      nhyphens <- ifelse(grepl("^--", token), 2, ifelse(grepl("^-", token), 1, 0))
+
+      if (nhyphens > 0) {
+        token_naked <- sub("^--?", "", token)
+
+        if (grepl("=", token_naked)) {
+          has_equals <- TRUE
+          parts <- strsplit(token_naked, "=", fixed = TRUE)[[1]]
+          lhs <- parts[1]
+          rhs <- parts[2]
+        } else {
+          has_equals <- FALSE
+          lhs <- token_naked
+          rhs_vals <- character(0)
+
+          # Gather all following tokens until next one starts with "-" or end of input
+          while (j + 1 <= length(tokens) && !grepl("^-", tokens[j + 1])) {
+            rhs_vals <- c(rhs_vals, tokens[j + 1])
+            j <- j + 1
+          }
+
+          rhs <- if (length(rhs_vals) > 0) paste(rhs_vals, collapse = " ") else NA
+        }
+
+        results[[length(results) + 1]] <- data.frame(
+          argpos = i,
+          lhs = lhs,
+          rhs = rhs,
+          has_equals = has_equals,
+          nhyphens = nhyphens,
+          stringsAsFactors = FALSE
+        )
+      }
+      j <- j + 1
+    }
+  }
+
+  do.call(rbind, results)
+}
 
 #' helper function that takes a character vector of CLI arguments and replaces matching old values with
 #'   intended new values
@@ -108,61 +181,6 @@ get_nested_values <- function(lst, key_strings, sep = "/", simplify = TRUE) {
 set_cli_options <- function(args = NULL, new_values = NULL, collapse=FALSE) {
   checkmate::assert_character(new_values)
   if (is.list(args) && length(args) ==  0L) args <- NULL # convert empty list to NULL
-
-  # helper to convert a character vector of CLI arguments to a parsed data.frame with
-  # arguments and values
-  args_to_df <- function(arg_vec = NULL) {
-    checkmate::assert_character(arg_vec)
-    # if (is.character(arg_vec)) arg_vec <- list(arg_vec) # allow character vector input
-    results <- list()
-
-    # Split the string by whitespace to get individual arguments
-    all_split <- strsplit(arg_vec, "\\s+")
-
-    for (i in seq_along(arg_vec)) {
-      tokens <- all_split[[i]]
-      j <- 1
-      while (j <= length(tokens)) {
-        token <- tokens[j]
-        nhyphens <- ifelse(grepl("^--", token), 2, ifelse(grepl("^-", token), 1, 0))
-
-        if (nhyphens > 0) {
-          token_naked <- sub("^--?", "", token)
-
-          if (grepl("=", token_naked)) {
-            has_equals <- TRUE
-            parts <- strsplit(token_naked, "=", fixed = TRUE)[[1]]
-            lhs <- parts[1]
-            rhs <- parts[2]            
-          } else {
-            has_equals <- FALSE
-            lhs <- token_naked
-            rhs_vals <- character(0)
-          
-            # Gather all following tokens until next one starts with "-" or end of input
-            while (j + 1 <= length(tokens) && !grepl("^-", tokens[j + 1])) {
-              rhs_vals <- c(rhs_vals, tokens[j + 1])
-              j <- j + 1
-            }
-          
-            rhs <- if (length(rhs_vals) > 0) paste(rhs_vals, collapse = " ") else NA
-          }
-
-          results[[length(results) + 1]] <- data.frame(
-            argpos = i,
-            lhs = lhs,
-            rhs = rhs,
-            has_equals = has_equals,
-            nhyphens = nhyphens,
-            stringsAsFactors = FALSE
-          )
-        }
-        j <- j + 1
-      }
-    }
-
-    do.call(rbind, results)
-  }
 
   # helper to convert a parsed CLI data.frame back into a character string of CLI arguments
   df_to_args <- function(df) {
@@ -848,4 +866,100 @@ run_fsl_command <- function(args, fsldir=NULL, echo=TRUE, run=TRUE, log_file=NUL
   }
 
   return(to_return)
+}
+
+
+
+
+#' Convert a matrix to a 4D NIfTI image
+#'
+#' Writes a numeric matrix (e.g., confound regressors) to a 4D NIfTI file with singleton y and z dimensions,
+#' suitable for processing with FSL tools. Each column becomes a voxel in the x dimension, and each row
+#' corresponds to a time point (t dimension).
+#'
+#' @param mat A numeric matrix or data frame with dimensions \code{time x variables}.
+#' @param ni_out Output filename (without extension) for the resulting NIfTI image.
+#'
+#' @return The function invisibly returns \code{NULL}. A NIfTI file is written to \code{ni_out}.
+#'
+#' @details This function creates a NIfTI image using FSL’s \code{fslcreatehd}, fills it using \code{oro.nifti},
+#' and writes it back to disk with dimensions \code{[x, 1, 1, time]}. Missing values are replaced with zero.
+#'
+#' @keywords internal
+#' @importFrom oro.nifti readNIfTI writeNIfTI
+#' @importFrom glue glue
+mat_to_nii <- function(mat, ni_out="mat", fsl_img=NULL) {
+  if (is.data.frame(mat)) mat <- as.matrix(mat)
+  # this always puts regressors along the x dimension; y and z are singletons
+  ydim <- zdim <- 1 # size of y and z dimensions
+  xsz <- ysz <- zsz <- 1 # voxel size in x y z
+  tr <- 1
+  xorigin <- yorigin <- zorigin <- 0
+
+  run_fsl_command(glue("fslcreatehd {ncol(mat)} {ydim} {zdim} {nrow(mat)} {xsz} {ysz} {zsz} {tr} {xorigin} {yorigin} {zorigin} 64 {ni_out}"), singularity_img = fsl_img)
+
+  ## read empty NIfTI into R
+  nif <- readNIfTI(ni_out, reorient = FALSE)
+  nif <- drop_img_dim(nif) # need to cleanup dim_ attribute to avoid writeNIfTI failure
+
+  # populate nifti -- need to transpose to be consistent with column-wise array filling
+  nif@.Data <- array(t(mat), dim = c(ncol(mat), 1, 1, nrow(mat))) # add singleton dimensions for y and z
+  nif[is.na(nif)] <- 0 # cannot handle missingness in NIfTIs
+
+  # write NIfTI with regressors back to file
+  writeNIfTI(nif, filename = ni_out) # this returns the filename to the caller
+}
+
+#' Convert a 4D NIfTI image to a matrix
+#'
+#' Reads a 4D NIfTI file (with singleton y and z dimensions) and converts it to a matrix
+#' with dimensions \code{time x variables}. This is the inverse of \code{mat_to_nii()}.
+#'
+#' @param ni_in Path to a NIfTI file where the x dimension encodes variables and the 4th (time) dimension encodes observations.
+#'
+#' @return A numeric matrix of dimension \code{time x variables}.
+#'
+#' @details Assumes the input image has shape \code{[x, 1, 1, time]} as produced by \code{mat_to_nii()}.
+#'
+#' @keywords internal
+#' @importFrom oro.nifti readNIfTI
+#' @importFrom checkmate assert_file_exists
+nii_to_mat <- function(ni_in) {
+  checkmate::assert_file_exists(ni_in)
+
+  nii <- readNIfTI(ni_in, reorient = FALSE, rescale_data = FALSE)
+  mat <- t(nii[, 1, 1, ]) # x and z -- make back into time x variables
+  return(mat)
+}
+
+
+
+#' Compute an intensity quantile from a NIfTI image
+#'
+#' Uses FSL's \code{fslstats} to compute a specified intensity quantile from a NIfTI image,
+#' optionally restricted to a brain mask and excluding zero-valued voxels.
+#'
+#' @param in_file Path to the input NIfTI image file.
+#' @param brain_mask Optional path to a binary brain mask image. If provided, quantiles are computed within the masked region.
+#' @param quantile Numeric value between 0 and 100 indicating the desired quantile (e.g., 50 for median).
+#' @param exclude_zero Logical; if \code{TRUE}, exclude zero-valued voxels from the computation.
+#' @param log_file Optional file path to capture FSL command output.
+#' @param fsl_img Optional Singularity image to execute FSL commands in a containerized environment.
+#'
+#' @return A single numeric value representing the requested intensity quantile.
+#'
+#' @keywords internal
+#' @importFrom checkmate assert_number assert_file_exists test_file_exists
+#' @importFrom glue glue
+get_image_quantile <- function(in_file, brain_mask=NULL, quantile=50, exclude_zero=FALSE, log_file=NULL, fsl_img = NULL) {
+  # checkmate::assert_file_exists(in_file)
+  checkmate::assert_number(quantile, lower = 0, upper = 100)
+  pstr <- ifelse(isTRUE(exclude_zero), "-P", "-p")
+  if (is.null(brain_mask)) {
+     quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} {pstr} {quantile}"), intern = TRUE, log_file = log_file, singularity_img = fsl_img))
+  } else {
+    if (!checkmate::test_file_exists(brain_mask)) checkmate::assert_file_exists(paste0(brain_mask, ".nii.gz"))
+    quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} -k {brain_mask} {pstr} {quantile}"), intern = TRUE, log_file = log_file, singularity_img = fsl_img))
+  }
+  return(quantile_value)
 }

@@ -5,12 +5,14 @@
 \title{helper function that takes a character vector of CLI arguments and replaces matching old values with
 intended new values}
 \usage{
-set_cli_options(args = NULL, new_values = NULL)
+set_cli_options(args = NULL, new_values = NULL, collapse = FALSE)
 }
 \arguments{
 \item{args}{a character vector of existing CLI arguments}
 
 \item{new_values}{a character vector of new CLI arguments to be substituted into \code{args}}
+
+\item{collapse}{a flag indicating whether to collapse the return argument into a single string}
 }
 \value{
 a modified character vector of CLI arguments

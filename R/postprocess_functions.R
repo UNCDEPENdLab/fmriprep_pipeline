@@ -232,8 +232,42 @@ postprocess_subject <- function(in_file, cfg="post_fmriprep.yaml") {
   return(cur_file)
 }
 
+####################################
+### FUNCTIONS FOR SPECIFIC STEPS ###
+####################################
 
-### FUNCTIONS FOR SPECIFIC STEPS
+#' Apply a brain mask to a 4D NIfTI image
+#'
+#' Multiplies a NIfTI image by a binary mask using FSL's \code{fslmaths -mas} to zero out non-brain voxels.
+#' This is typically used to restrict processing to brain tissue.
+#'
+#' @param in_file Path to the input 4D NIfTI image.
+#' @param mask_file Path to a binary mask NIfTI file (same dimensions as \code{in_file}).
+#' @param prefix Prefix to prepend to the output file name.
+#' @param overwrite Logical; whether to overwrite the output file if it already exists.
+#' @param log_file Optional path to a file for logging FSL command output.
+#' @param fsl_img Optional path to a Singularity image to execute the command in a container.
+#'
+#' @return Path to the masked output NIfTI file.
+#'
+#' @keywords internal
+#' @importFrom checkmate assert_file_exists assert_string
+#' @importFrom glue glue
+apply_mask <- function(in_file, mask_file, prefix="m", overwrite=FALSE, log_file=NULL, fsl_img = NULL) {
+  checkmate::assert_file_exists(mask_file)
+  checkmate::assert_string(prefix)
+
+  res <- out_file_exists(in_file, prefix, overwrite)
+  if (isTRUE(res$skip)) {
+    return(res$out_file) # skip out
+  } else {
+    out_file <- res$out_file
+  }
+
+  run_fsl_command(glue("fslmaths {in_file} -mas {mask_file} {out_file} -odt float"), log_file = log_file, singularity_img = fsl_img)
+  return(out_file)
+}
+
 
 #' Apply temporal filtering to a 4D NIfTI image
 #'
@@ -248,6 +282,7 @@ postprocess_subject <- function(in_file, cfg="post_fmriprep.yaml") {
 #' @param tr Repetition time (TR) in seconds. Required to convert Hz to volumes.
 #' @param overwrite Logical; whether to overwrite the output file if it exists.
 #' @param log_file Optional path to a log file for command output.
+#' @param fsl_img Optional Singularity image to execute FSL commands in a containerized environment.
 #'
 #' @return The path to the temporally filtered output NIfTI file.
 #'
@@ -257,7 +292,7 @@ postprocess_subject <- function(in_file, cfg="post_fmriprep.yaml") {
 #' @keywords internal
 #' @importFrom glue glue
 #' @importFrom checkmate assert_string assert_number assert_flag
-temporal_filter <- function(in_file, prefix="f", low_pass_hz=0, high_pass_hz=1/120, tr=NULL, overwrite=FALSE, log_file=NULL) {
+temporal_filter <- function(in_file, prefix="f", low_pass_hz=0, high_pass_hz=1/120, tr=NULL, overwrite=FALSE, log_file=NULL, fsl_img = NULL) {
   #checkmate::assert_file_exists(in_file)
   checkmate::assert_string(prefix)
   checkmate::assert_number(low_pass_hz)
@@ -313,13 +348,14 @@ temporal_filter <- function(in_file, prefix="f", low_pass_hz=0, high_pass_hz=1/1
 #' @param overwrite Logical; whether to overwrite the output file if it exists.
 #' @param log_file Optional path to a file for logging FSL command output.
 #' @param use_R Logical; if \code{TRUE}, use an R wrapper script (\code{fsl_regfilt.R}) instead of \code{fsl_regfilt}.
+#' @param fsl_img Optional Singularity image to execute FSL commands in a containerized environment.
 #'
 #' @return Path to the denoised output NIfTI file. If required files are missing, returns \code{in_file} unmodified.
 #'
 #' @keywords internal
 #' @importFrom glue glue
 #' @importFrom checkmate assert_string test_file_exists
-apply_aroma <- function(in_file, prefix = "a", mixing_file, noise_file, overwrite = FALSE, log_file = NULL, use_R = FALSE) {
+apply_aroma <- function(in_file, prefix = "a", mixing_file, noise_file, overwrite = FALSE, log_file = NULL, use_R = FALSE, fsl_img = NULL) {
   # checkmate::assert_file_exists(in_file)
   checkmate::assert_string(prefix)
   if (isFALSE(checkmate::test_file_exists(mixing_file))) {
@@ -368,6 +404,7 @@ apply_aroma <- function(in_file, prefix = "a", mixing_file, noise_file, overwrit
 #' @param brain_mask Optional brain mask to guide intensity thresholding. If \code{NULL}, the whole image is used.
 #' @param overwrite Logical; whether to overwrite the output file if it already exists.
 #' @param log_file Optional path to a file for logging the FSL command output.
+#' @param fsl_img Optional Singularity image to execute FSL commands in a containerized environment.
 #'
 #' @return Path to the spatially smoothed output NIfTI file.
 #'
@@ -377,7 +414,7 @@ apply_aroma <- function(in_file, prefix = "a", mixing_file, noise_file, overwrit
 #' @keywords internal
 #' @importFrom glue glue
 #' @importFrom checkmate assert_string assert_number assert_file_exists
-spatial_smooth <- function(in_file, prefix = "s", fwhm_mm = 6, brain_mask = NULL, overwrite = FALSE, log_file = NULL) {
+spatial_smooth <- function(in_file, prefix = "s", fwhm_mm = 6, brain_mask = NULL, overwrite = FALSE, log_file = NULL, fsl_img=NULL) {
   # checkmate::assert_file_exists(in_file)
   checkmate::assert_string(prefix)
   checkmate::assert_number(fwhm_mm, lower = 0.1)
@@ -426,6 +463,7 @@ spatial_smooth <- function(in_file, prefix = "s", fwhm_mm = 6, brain_mask = NULL
 #' @param global_median Target median intensity value to normalize to (default is 10000).
 #' @param overwrite Logical; whether to overwrite the output file if it exists.
 #' @param log_file Optional path to a log file for command output.
+#' @param fsl_img Optional Singularity image to execute FSL commands in a containerized environment.
 #'
 #' @return Path to the intensity-normalized output NIfTI file.
 #'
@@ -435,7 +473,7 @@ spatial_smooth <- function(in_file, prefix = "s", fwhm_mm = 6, brain_mask = NULL
 #' @keywords internal
 #' @importFrom glue glue
 #' @importFrom checkmate assert_string assert_number
-intensity_normalize <- function(in_file, prefix="n", brain_mask=NULL, global_median=10000, overwrite=FALSE, log_file=NULL) {
+intensity_normalize <- function(in_file, prefix="n", brain_mask=NULL, global_median=10000, overwrite=FALSE, log_file=NULL, fsl_img = NULL) {
   #checkmate::assert_file_exists(in_file)
   checkmate::assert_string(prefix)
   checkmate::assert_number(global_median)
@@ -465,6 +503,7 @@ intensity_normalize <- function(in_file, prefix="n", brain_mask=NULL, global_med
 #' @param prefix Prefix to prepend to the output file name.
 #' @param overwrite Logical; whether to overwrite the output file if it already exists.
 #' @param log_file Optional path to a log file for recording command output.
+#' @param fsl_img Optional Singularity image to execute FSL commands in a containerized environment.
 #'
 #' @return Path to the residualized output NIfTI file.
 #'
@@ -475,7 +514,7 @@ intensity_normalize <- function(in_file, prefix="n", brain_mask=NULL, global_med
 #' @keywords internal
 #' @importFrom glue glue
 #' @importFrom checkmate assert_file_exists assert_string
-confound_regression <- function(in_file, to_regress=NULL, prefix="r", overwrite=FALSE, log_file=NULL) {
+confound_regression <- function(in_file, to_regress=NULL, prefix="r", overwrite=FALSE, log_file=NULL, fsl_img = NULL) {
   #checkmate::assert_file_exists(in_file)
   checkmate::assert_file_exists(to_regress)
   checkmate::assert_string(prefix)
