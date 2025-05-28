@@ -96,6 +96,72 @@ get_nested_values <- function(lst, key_strings, sep = "/", simplify = TRUE) {
   return(ret)
 }
 
+
+#' Assign values to a nested list using key-value strings
+#'
+#' Parses assignments like \code{"a/b/c=10"} and returns \code{list(a = list(b = list(c = 10)))}.
+#'
+#' @param assignments A character vector of assignment strings (e.g., \code{"a/b=1"}, \code{"x/y/z=TRUE"}).
+#' @param sep A character used to separate keys. Default is \code{"/"}.
+#' @param lst Optional list to update. If \code{NULL}, starts from an empty list.
+#' @param type_values Logical; whether to attempt to conver right-hand side strings to relevant data
+#'   types using `type.convert`.
+#'
+#' @return A nested list with the specified keys and values.
+#'
+#' @keywords internal
+set_nested_values <- function(assignments, sep = "/", lst = NULL, type_values = TRUE) {
+  checkmate::assert_character(assignments)
+  checkmate::assert_list(lst, null.ok = TRUE)
+  checkmate::assert_flag(type_values)
+  if (is.null(lst)) lst <- list()
+  
+  for (a in assignments) {
+    parts <- strsplit(a, "=", fixed = TRUE)[[1]]
+    if (length(parts) != 2L) stop("Invalid assignment format: ", assignment)
+    key_str <- parts[1]
+    val_str <- parts[2]
+    
+    keys <- strsplit(key_str, sep, fixed = TRUE)[[1]]
+    
+    value <- scan(text = val_str, what = character(), quote = "'\"", quiet = TRUE)
+    if (type_values) value <- type.convert(value, as.is=TRUE)
+    
+    # Build nested list from inside out
+    nested <- value
+    for (key in rev(keys)) {
+      nested <- setNames(list(nested), key)
+    }
+    
+    # Merge into overall list
+    lst <- modifyList(lst, nested)
+  }
+  
+  return(lst)
+}
+
+
+
+#' Parse CLI-style arguments into a nested list using args_to_df()
+#'
+#' This function tokenizes command-line arguments using \code{args_to_df()} and builds a nested list
+#' by interpreting forward slashes in keys (e.g., \code{--a/b=10 11}) as nested structure.
+#'
+#' @param args A character vector (e.g., from \code{commandArgs(trailingOnly = TRUE)}).
+#' @param sep A character used to separate nested keys. Default is \code{"/"}.
+#' @param type_values Logical; whether to attempt to conver right-hand side strings to relevant data
+#'   types using `type.convert`.
+#'
+#' @return A nested list of parsed CLI arguments.
+#'
+#' @keywords internal
+parse_cli_args <- function(args, sep = "/", type_values = TRUE) {
+  df <- args_to_df(args)
+  assignments <- paste(df$lhs, df$rhs, sep="=")
+  set_nested_values(assignments, sep = sep, type_values = type_values)
+}
+
+
 #' Parse command-line arguments into a structured data frame
 #'
 #' Converts a character vector of CLI-style arguments into a data frame with fields for position,
@@ -119,56 +185,62 @@ get_nested_values <- function(lst, key_strings, sep = "/", simplify = TRUE) {
 #' @importFrom checkmate assert_character
 args_to_df <- function(arg_vec = NULL) {
   checkmate::assert_character(arg_vec)
-  # if (is.character(arg_vec)) arg_vec <- list(arg_vec) # allow character vector input
   results <- list()
-
+  # require that each element of arg_vec begins with a hyphen (or two)
+  hyp_start <- grepl("\\s*-{1,2}", arg_vec, perl=TRUE)
+  if (!all(hyp_start)) stop("args_to_df requires that each element of the input vector start with one or two hyphens")
+  
   # Split the string by whitespace to get individual arguments
   all_split <- strsplit(arg_vec, "\\s+")
-
+  
   for (i in seq_along(arg_vec)) {
     tokens <- all_split[[i]]
     j <- 1
     while (j <= length(tokens)) {
       token <- tokens[j]
       nhyphens <- ifelse(grepl("^--", token), 2, ifelse(grepl("^-", token), 1, 0))
-
-      if (nhyphens > 0) {
+      if (nhyphens > 0L) {
         token_naked <- sub("^--?", "", token)
-
+        
         if (grepl("=", token_naked)) {
           has_equals <- TRUE
           parts <- strsplit(token_naked, "=", fixed = TRUE)[[1]]
           lhs <- parts[1]
-          rhs <- parts[2]
+          rhs_vals <- parts[2]
+          #to_parse <- c(parts[2], tokens)
         } else {
           has_equals <- FALSE
           lhs <- token_naked
           rhs_vals <- character(0)
-
-          # Gather all following tokens until next one starts with "-" or end of input
-          while (j + 1 <= length(tokens) && !grepl("^-", tokens[j + 1])) {
-            rhs_vals <- c(rhs_vals, tokens[j + 1])
-            j <- j + 1
-          }
-
-          rhs <- if (length(rhs_vals) > 0) paste(rhs_vals, collapse = " ") else NA
         }
-
-        results[[length(results) + 1]] <- data.frame(
-          argpos = i,
-          lhs = lhs,
-          rhs = rhs,
-          has_equals = has_equals,
-          nhyphens = nhyphens,
-          stringsAsFactors = FALSE
-        )
       }
-      j <- j + 1
+      
+      # Gather all following tokens until next one starts with "-" or end of input
+      while (j + 1 <= length(tokens) && !grepl("^-", tokens[j + 1])) {
+        rhs_vals <- c(rhs_vals, tokens[j + 1])
+        j <- j + 1
+      }
+      
+      rhs <- if (length(rhs_vals) > 0) paste(rhs_vals, collapse = " ") else NA
+      
+      # add result to data.frame
+      results[[length(results) + 1]] <- data.frame(
+        argpos = i,
+        lhs = lhs,
+        rhs = rhs,
+        has_equals = has_equals,
+        nhyphens = nhyphens,
+        stringsAsFactors = FALSE
+      )
+      
+      j <- j + 1 # go to next hyphenated token
     }
   }
-
-  do.call(rbind, results)
+  
+  do.call(rbind, results) # combine to data.frame
+  
 }
+
 
 #' helper function that takes a character vector of CLI arguments and replaces matching old values with
 #'   intended new values
