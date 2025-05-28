@@ -1,20 +1,47 @@
 
 ### primary function to process a given fmriprep subject dataset
-postprocess_subject <- function(in_file, cfg="post_fmriprep.yaml") {
-  checkmate::assert_file_exists(in_file)  
+postprocess_subject <- function(in_file, cfg=NULL) {
+  checkmate::assert_file_exists(in_file)
+  checkmate::assert_list(cfg)
   
   # checkmate::assert_list(processing_sequence)
   proc_files <- get_fmriprep_outputs(in_file)
 
+
+  # default configuration settings -- not sure whether this should be allowed?
+  default_cfg <- list(
+    tr = NULL,
+    force_processing_order = FALSE,
+    log_file = "{proc_files$prefix}_post_fmriprep.log",
+    brain_mask = "{proc_files$brain_mask}",
+    overwrite = FALSE, keep_intermediates = FALSE,
+    processing_steps = c(
+      "apply_mask", "spatial_smooth", "apply_aroma",
+      "temporal_filter", "intensity_normalize", "confound_calculate"
+    ),
+    apply_mask = list(prefix = "m"),
+    spatial_smooth = list(prefix = "s", fwhm_mm = 6),
+    apply_aroma = list(prefix = "a", aggressive = FALSE),
+    temporal_filter = list(prefix = "f", low_pass_hz = 0, high_pass_hz = 0.008333333),
+    intensity_normalize = list(prefix = "n", global_median = 10000),
+    confound_regression = list(
+      prefix = "r", columns = c("csf", "csf_derivative1", "white_matter", "white_matter_derivative1"),
+      noproc_columns = list(),
+      output_file = "{proc_files$prefix}_confound_regressors.txt"
+    ),
+    confound_calculate = list(
+      columns = c("csf", "csf_derivative1", "white_matter", "white_matter_derivative1"),
+      noproc_columns = "framewise_displacement",
+      output_file = "{proc_files$prefix}_postprocessed_confounds.txt",
+      demean = FALSE
+    )
+  )
+
+  # location of FSL singularity container
+  fsl_img <- cfg$fsl_img
+
   sdir <- dirname(in_file)
   setwd(sdir)
-
-  if (is.list(cfg)) {
-    # for now, nothing here -- just use list as-is
-  } else if (checkmate::test_string(cfg)) {
-    checkmate::assert_file_exists(cfg)
-    cfg <- yaml::read_yaml(cfg)
-  }
 
   # add any defaults if user's config is incomplete
   cfg <- populate_defaults(cfg, default_cfg)
@@ -542,4 +569,57 @@ confound_regression <- function(in_file, to_regress=NULL, prefix="r", overwrite=
 
   rm_niftis(temp_tmean)
   return(out_file)
+}
+
+
+#' Compute a loose brain mask from functional MRI data using FSL
+#'
+#' Generates a brain mask from a functional image using a modified FSL approach
+#' based on the 98-2 percentile intensity method. This method combines BET skull-stripping
+#' with percentile thresholding and binary dilation to produce a conservative mask.
+#'
+#' @param in_file Path to the input 4D NIfTI functional image.
+#' @param log_file Optional path to a log file for command output.
+#'
+#' @return File path to the computed binary brain mask (not yet dilated). A dilated version
+#'   of the mask is also saved with a `_dil1x` suffix.
+#'
+#' @details This function replicates the "98-2" heuristic used in FSL’s featlib.tcl:
+#'   it computes the 2nd and 98th percentiles from a skull-stripped mean image and thresholds
+#'   at 10% above the 2nd percentile. A final mask is formed by applying this threshold,
+#'   binarizing, and performing one dilation iteration.
+#'
+#' @keywords internal
+compute_brain_mask <- function(in_file, log_file = NULL) {
+  # use the 98 - 2 method from FSL (featlib.tcl ca. line 5345)
+
+  to_log("# Computing brain mask from fMRI data using FSL's 98-2 percentile method", log_file=log_file)
+
+  # first use FSL bet on the mean functional to get a starting point
+  tmean_file <- tempfile(pattern="tmean")
+  run_fsl_command(glue("fslmaths {in_file} -Tmean {tmean_file}"), log_file = log_file, singularity_img = fsl_img)
+  
+  temp_bet <- tempfile()
+  run_fsl_command(glue("bet {tmean_file} {temp_bet} -R -f 0.3 -m -n"), log_file = log_file, singularity_img = fsl_img)
+
+  temp_stripped <- tempfile(pattern="epi_bet")
+  run_fsl_command(glue("fslmaths {in_file} -mas {temp_bet}_mask {temp_stripped}"), log_file = log_file, singularity_img = fsl_img)
+
+  # now compute 2nd and 98th percentiles on skull-stripped image
+  p2 <- get_image_quantile(temp_stripped, quantile=2, exclude_zero = FALSE, log_file = log_file)
+  p98 <- get_image_quantile(temp_stripped, quantile=98, exclude_zero = FALSE, log_file = log_file)
+  
+  thresh <- p2 + (p98 - p2)/10
+
+  # apply this threshold to the epi_bet image, then take Tmin and binarize to form mask
+  temp_mask <- tempfile(pattern = "mask_98_2")
+  run_fsl_command(glue("fslmaths {temp_stripped} -thr {thresh} -Tmin -bin {temp_mask}"), log_file=log_file, singularity_img = fsl_img)
+
+  # create dil1x copy as well if this is used elsewhere
+  run_fsl_command(glue("fslmaths {temp_mask} -dilF {temp_mask}_dil1x"), log_file = log_file, singularity_img = fsl_img)
+
+  # cleanup temp files
+  rm_niftis(c(tmean_file, temp_bet, temp_stripped))
+  
+  return(temp_mask)
 }
