@@ -18,58 +18,47 @@ trap 'trap_job_failure postprocess SIGHUP' SIGHUP
 trap 'trap_job_failure postprocess SIGQUIT' SIGQUIT
 trap 'traperror postprocess $? $LINENO ${BASH_LINENO[0]} "$BASH_COMMAND" $(printf "::%s" ${FUNCNAME[@]:-})' ERR
 
-# default nthreads to however many cores we have $SLURM_SOMETHING
-[ -z "$postprocess_nthreads" ] && echo "No postprocess_nthreads environment variable. Defaulting to 4" && postprocess_nthreads=4
-
 ncores=$SLURM_NTASKS
-
 
 # add the job id to the log file variables in case of crash
 stdout_log="${stdout_log//%j/$SLURM_JOB_ID}"
 stderr_log="${stderr_log//%j/$SLURM_JOB_ID}"
 
-
-#in principle, we could pass all environment variables in with -v
-# [ -z "$env_file" ] && env_file="${pipedir}/compute_environment.cfg" #set default
-# [ ! -r "$env_file" ]  && echo "Cannot access compute config file ${env_file}" && exit 1
-# source "$env_file" #setup relevant variables for this processing environment
-
-[[ -n "${study_cfg}" && -r "${study_cfg}" ]] && source "${study_cfg}" #source a study config file if passed as environment variable
-
-# default nthreads to however many cores we have $SLURM_SOMETHING
-[ -z "$fmriprep_nthreads" ] && echo "No fmriprep_nthreads environment variable. Defaulting to 4" && fmriprep_nthreads=4
-
 ####
 #verify required arguments
-[ -z "$fmriprep_container" ] && echo "fmriprep_container not set. Exiting" && exit 1
 [ -z "$loc_mrproc_root" ] && echo "loc_mrproc_root not set. Exiting." && exit 1
-[ -z "$loc_scratch" ] && echo "loc_scratch not set. Exiting." && exit 1
-[ -z "$loc_bids_root" ] && echo "loc_bids_root not set. Exiting." && exit 1
-[ -z "$sub" ] && echo "sub not set. Exiting." && exit 1
+[ -z "$sub_id" ] && echo "sub_id not set. Exiting." && exit 1
+[ -z "$postproc_cli" ] && echo "postproc_cli not set. Exiting." && exit 1
+[ -z "$postproc_rscript" ] && echo "postproc_rscript not set. Exiting." && exit 1
+[ ! -f "$postproc_rscript" ] && echo "postproc_rscript $postproc_rscript not found. Exiting" && exit 1
+[ ! -r "$postproc_rscript" ] && echo "postproc_rscript $postproc_rscript not readable. Exiting" && exit 1
+
+
+###
+# handle multi-session setup
+if [ -n "$ses_id" ]; then
+  out_dir=${loc_bids_root}/sub-${sub_id}/ses-${ses_id}
+  ses_flag="--ses $ses_id"
+  ses_str="session $ses_id"
+else
+  out_dir=${loc_bids_root}/sub-${sub_id}
+  ses_flag=""
+  ses_str=""
+fi
+mkdir -p "$out_dir"
+cd $out_dir || { echo "Failed to change directory to $out_dir"; exit 1; }
+
 
 ####
 [[ "$debug_pipeline" -eq 1 ]] && rel_flag=c #if debug_pipeline is 1, only echo command to log, don't run it
-# rel "${pipedir}/fmriprep_wrapper ${loc_bids_root} ${loc_mrproc_root}/ participant --participant_label $sub --nthreads $fmriprep_nthreads -w ${loc_root}/fmriprep_tempfiles && date \"+%m%d%y@%H:%M\" > $loc_bids_root/sub-$sub/.fmriprep.complete" $rel_flag
+[[ -n "$cmd_log" ]] && cmd_log="-l $cmd_log" # if cmd_log is set, pass it to rel
 
-# rel $rel_flag $fmriprep_container "$loc_bids_root" "$loc_mrproc_root/" participant --participant-label $sub \
-#   --nthreads $fmriprep_nthreads -w 
+rel c $cmd_log Starting postprocessing for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the postproc command
 
-# BASE_SINGULARITY_CMD = (
-#     "unset PYTHONPATH; {templateflow1} singularity run -B {templateflow2}"
-#     "{bindPaths} {batchcommands} {fmriprepInstance} {bids_dir} {output_dir} "
-#     "participant --participant-label {participantLabels} -w {working_dir} "
-#     "--fs-license-file {fslicense} {threads} {useAROMA} {other_opts}"
-# )
+rel $rel_flag $cmd_log Rscript --vanilla "$postproc_rscript" $postproc_cli &
+    
+wait
 
-singularity_cmd="singularity run --cleanenv -B $loc_bids_root:/data -B $loc_scratch:/work $fmriprep_container
+[[ $? -eq 0 && $debug_pipeline -eq 0 ]] && date +"%Y-%m-%d %H:%M:%S" > "${out_dir}/.postprocess_complete"
 
-rel $rel_flag $singularity_cmd \
-    "$loc_bids_root" "$loc_mrproc_root/" participant \
-    --participant-label $sub \
-    --nthreads $fmriprep_nthreads \
-    $cli_options && date '+%m%d%y@%H:%M' > $loc_mrproc_root/sub-$sub/.fmriprep.complete"
-
-
-
-#add --low-mem?
-#add --mem-mb?
+rel c $cmd_log Finished postprocessing for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the end of the postproc command

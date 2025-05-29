@@ -70,7 +70,7 @@ rel $rel_flag $cmd_log $singularity_cmd --files $loc_sub_dicoms -s $sub_id $ses_
 wait
 
 # write complete file if the command was successful and debug_pipeline is not set
-[[ $? -eq 0 && $debug_pipeline -eq 0 ]] && date +"%Y-%m-%d %H:%M:%S" > ${out_dir}/.heudiconv_complete
+[[ $? -eq 0 && $debug_pipeline -eq 0 ]] && date +"%Y-%m-%d %H:%M:%S" > "${out_dir}/.heudiconv_complete"
 
 rel c $cmd_log Finished heudiconv for subject $sub_id $ses_str at $(date +"%Y-%m-%d %H:%M:%S") # log the start of the heudiconv command
 

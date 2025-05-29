@@ -50,4 +50,4 @@ code_dir="code"
 
 #python ${pipedir}/${code_dir}/test.py ${pipedir}/$fidelity_json $loc_bids_root ${loc_root}/fidelity_checks "$sub"
 [[ "$debug_pipeline" -eq 1 ]] && rel_suffix=c #if debug_pipeline is 1, only echo command to log, don't run it
-rel "python ${pipedir}/mri_fidelity_checks/${code_dir}/feeder.py ${pipedir}/$fidelity_json $loc_bids_root ${loc_root} $sub && python ${pipedir}/mri_fidelity_checks/${code_dir}/substatus.py ${loc_root}/fidelity_checks $sub && date \"+%m%d%y@%H:%M\" > $loc_bids_root/sub-$sub/.fidelity.complete" $rel_suffix
+rel "python ${pipedir}/mri_fidelity_checks/${code_dir}/feeder.py ${pipedir}/$fidelity_json $loc_bids_root ${loc_root} $sub && python ${pipedir}/mri_fidelity_checks/${code_dir}/substatus.py ${loc_root}/fidelity_checks $sub && date \"+%m%d%y@%H:%M\" > $loc_bids_root/sub-$sub/.fidelity_complete" $rel_suffix

@@ -606,6 +606,78 @@ get_sub_id <- function(bids_dir, regex="sub-[0-9]+") {
   sub("sub-", "", basename(bids_dir))
 }
 
+#' Find preprocessed BOLD NIfTI files in a fmriprep derivatives directory
+#'
+#' @param root Path to the derivatives/fmriprep directory
+#' @param subject_ids Optional character vector of subject IDs to include
+#' @param session_ids Optional character vector of session IDs to include
+#' @param task_filter Optional character vector of task names to include
+#' @param desc_filter Optional character vector of desc labels to include (e.g., "preproc")
+#' @return A data.frame of matching BOLD files and their metadata
+#' @importFrom checkmate assert_directory_exists assert_character
+# get_fmriprep_outputs <- function(root,
+#                                      subject_ids = NULL,
+#                                      session_ids = NULL,
+#                                      task_filter = NULL,
+#                                      desc_filter = NULL) {
+#   checkmate::assert_directory_exists(root)
+#   checkmate::assert_character(subject_ids, null.ok = TRUE)
+#   checkmate::assert_character(session_ids, null.ok = TRUE)
+#   checkmate::assert_character(task_filter, null.ok = TRUE)
+#   checkmate::assert_character(desc_filter, null.ok = TRUE)
+
+#   subject_info <- get_subject_dirs(root = root, full.names = FALSE)
+#   bold_files <- list()
+
+# browser()
+
+#   for (i in seq_len(nrow(subject_info))) {
+#     sub_id <- subject_info$sub_id[i]
+#     ses_id <- subject_info$ses_id[i]
+#     sub_dir <- subject_info$sub_dir[i]
+#     ses_dir <- subject_info$ses_dir[i]
+
+#     if (!is.null(subject_ids) && !(sub_id %in% subject_ids)) next
+#     if (!is.null(session_ids) && !is.na(ses_id) && !(ses_id %in% session_ids)) next
+
+#     func_path <- if (!is.na(ses_dir)) file.path(root, ses_dir, "func") else file.path(root, sub_dir, "func")
+#     if (!dir.exists(func_path)) next
+
+#     nifti_files <- list.files(func_path, pattern = ".*_bold.*\\.nii\\.gz$", full.names = TRUE)
+
+#     for (f in nifti_files) {
+#       fname <- basename(f)
+
+#       extract_tag <- function(pattern, name) {
+#         if (grepl(pattern, name)) sub(paste0(".*", pattern, "-([^_]+).*"), "\\1", name) else NA
+#       }
+
+#       task <- extract_tag("task", fname)
+#       desc <- extract_tag("desc", fname)
+#       run <- extract_tag("run", fname)
+#       echo <- extract_tag("echo", fname)
+#       space <- extract_tag("space", fname)
+
+#       if (!is.null(task_filter) && !(task %in% task_filter)) next
+#       if (!is.null(desc_filter) && !(desc %in% desc_filter)) next
+
+#       bold_files[[length(bold_files) + 1]] <- data.frame(
+#         sub_id = sub_id,
+#         ses_id = ses_id,
+#         task = task,
+#         desc = desc,
+#         run = run,
+#         echo = echo,
+#         space = space,
+#         file = f,
+#         stringsAsFactors = FALSE
+#       )
+#     }
+#   }
+
+#   do.call(rbind, bold_files)
+# }
+
 get_compute_environment_from_file <- function(scfg) {
   if (length(scfg) > 0L && !"compute_environment" %in% names(scfg)) {
     cat(glue("

@@ -75,7 +75,7 @@ for (sdir in subdirs) {
   job_ids <- list()
 
   # Heudiconv
-  if (!file.exists(file.path(loc_bids_root, paste0("sub-", sub), ".heudiconv.complete"))) {
+  if (!file.exists(file.path(loc_bids_root, paste0("sub-", sub), ".heudiconv_complete"))) {
     heudiconvID <- rel(glue("qsub {build_qsub_string(walltime = heudiconv_walltime)} -v {envpass(
       'rel_suffix', 'sub', 'loc_bids_root', 'loc_mrraw_root',
       'log_file', 'pipedir', 'heudiconv_location', 'heudiconv_heuristic', 'debug_pipeline'
@@ -84,7 +84,7 @@ for (sdir in subdirs) {
   }
 
   # MRIQC
-  if (run_mriqc == 1 && !file.exists(file.path(loc_bids_root, paste0("sub-", sub), ".mriqc.complete"))) {
+  if (run_mriqc == 1 && !file.exists(file.path(loc_bids_root, paste0("sub-", sub), ".mriqc_complete"))) {
     mriqcID <- rel(glue("qsub {build_depend_string('afterok', job_ids$heudiconvID)} {build_qsub_string(
       nodes = glue('1:ppn={mriqc_nthreads}'), walltime = mriqc_walltime
     )} -v {envpass('rel_suffix', 'loc_bids_root', 'debug_pipeline', 'sub', 'loc_root', 'log_file', 'pipedir')} {file.path(pipedir, 'qsub_mriqc_subject.sh')}"),
@@ -93,7 +93,7 @@ for (sdir in subdirs) {
   }
 
   # FMRIPREP
-  if (run_fmriprep == 1 && !file.exists(file.path(loc_bids_root, paste0("sub-", sub), ".fmriprep.complete"))) {
+  if (run_fmriprep == 1 && !file.exists(file.path(loc_bids_root, paste0("sub-", sub), ".fmriprep_complete"))) {
     fmriprepID <- rel(glue("qsub {build_depend_string('afterok', job_ids$heudiconvID)} {build_qsub_string(
       nodes = glue('1:ppn={fmriprep_nthreads}'), walltime = fmriprep_walltime
     )} -v {envpass('rel_suffix', 'debug_pipeline', 'sub', 'loc_root', 'loc_bids_root', 'loc_mrproc_root', 'fmriprep_nthreads', 'log_file', 'pipedir')} {file.path(pipedir, 'qsub_fmriprep_subject.sh')}"),
@@ -102,7 +102,7 @@ for (sdir in subdirs) {
   }
 
   # Fidelity Checks
-  if (run_fidelity_checks == 1 && !file.exists(file.path(loc_bids_root, paste0("sub-", sub), ".fidelity.complete"))) {
+  if (run_fidelity_checks == 1 && !file.exists(file.path(loc_bids_root, paste0("sub-", sub), ".fidelity_complete"))) {
     fidelityID <- rel(glue("qsub {build_depend_string('afterok', job_ids$heudiconvID, 'afterany', job_ids$fidelityID)} {build_qsub_string()} -v {envpass(
       'rel_suffix', 'debug_pipeline', 'sub', 'fidelity_json', 'loc_root', 'loc_bids_root', 'log_file', 'pipedir')} {file.path(pipedir, 'mri_fidelity_checks/qsub_fidelity_checks.sh')}"),
       rel_suffix, paste0("fidelityID-", sub))

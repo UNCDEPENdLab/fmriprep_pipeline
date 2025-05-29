@@ -150,8 +150,8 @@ process_subject <- function(scfg, sub_cfg = NULL, steps = NULL) {
   ## Handle aroma
   aroma_id <- submit_step("aroma", parent_ids = c(bids_conversion_ids, fmriprep_id))
 
-  ## Handle postprocessing
-  postprocess_ids <- unlist(lapply(seq_len(n_inputs), function(idx) submit_step("postprocess", row_idx = idx, parent_ids = c(bids_conversion_ids, bids_validation_id, fmriprep_id, aroma_id))))
+  ## Handle postprocessing (session-level)
+  postprocess_ids <- unlist(lapply(seq_len(n_inputs), function(idx) submit_step("postprocess", row_idx = idx, parent_ids = c(bids_conversion_ids, fmriprep_id, aroma_id))))
 
   return(TRUE) # nothing interesting for now
 }
@@ -332,18 +332,24 @@ submit_aroma <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env
 
 submit_postprocess <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env_variables = NULL, sched_script = NULL, sched_args = NULL, parent_ids = NULL, lg = NULL) {
 
+  postproc_rscript <- system.file("postprocess_subject.R", package = "BGprocess")
+  if (!checkmate::test_file_exists(postproc_rscript)) stop("Cannot find postprocess_subject.R")
+
   # postprocessing
-  script <- get_job_script(scfg, "postprocess")
-  sched_args <- get_job_sched_args(scfg, "postprocess")
+  scfg$input <- sub_dir # copy the location of this sub/ses dir into the config to pass on as CLI
+  scfg$fsl_img <- scfg$fmriprep_container # always pass fmriprep container for running FSL commands in postprocessing
+  postproc_cli <- nested_list_to_args(scfg$postprocess) # convert postprocess config into CLI args
+  
   env_variables <- c(
     env_variables,
-    loc_sub_dicoms = scfg$dicom_directory,
-    loc_bids_root = scfg$bids_directory,
-    heudiconv_heuristic = scfg$heudiconv$heuristic_file,
-    sub = get_sub_id(sub_dir)
+    loc_mrproc_root = scfg$fmriprep_directory,
+    sub_id = sub_id,
+    ses_id = ses_id,
+    postproc_cli = postproc_cli,
+    postproc_rscript = postproc_rscript,
   )
 
-  job_id <- fmri.pipeline::cluster_job_submit(script,
+  job_id <- fmri.pipeline::cluster_job_submit(sched_script,
     scheduler = scfg$compute_environment$scheduler,
     sched_args = sched_args, env_variables = env_variables,
     wait_jobs = parent_ids

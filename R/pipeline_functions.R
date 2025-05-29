@@ -115,31 +115,79 @@ set_nested_values <- function(assignments, sep = "/", lst = NULL, type_values = 
   checkmate::assert_list(lst, null.ok = TRUE)
   checkmate::assert_flag(type_values)
   if (is.null(lst)) lst <- list()
-  
+
   for (a in assignments) {
     parts <- strsplit(a, "=", fixed = TRUE)[[1]]
     if (length(parts) != 2L) stop("Invalid assignment format: ", assignment)
     key_str <- parts[1]
     val_str <- parts[2]
-    
+
     keys <- strsplit(key_str, sep, fixed = TRUE)[[1]]
-    
+
     value <- scan(text = val_str, what = character(), quote = "'\"", quiet = TRUE)
-    if (type_values) value <- type.convert(value, as.is=TRUE)
-    
+    if (type_values) value <- type.convert(value, as.is = TRUE)
+
     # Build nested list from inside out
     nested <- value
     for (key in rev(keys)) {
       nested <- setNames(list(nested), key)
     }
-    
+
     # Merge into overall list
     lst <- modifyList(lst, nested)
   }
-  
+
   return(lst)
 }
 
+
+#' Convert a nested list into CLI-style arguments using slash-separated keys
+#'
+#' Recursively traverses a nested list and returns a character vector or string
+#' of arguments like \code{--a/b=10 --c=25}.
+#'
+#' @param lst A named (possibly nested) list.
+#' @param sep Separator used for nested keys (default is "/").
+#' @param collapse Logical; if TRUE, returns a single space-separated string.
+#'
+#' @return A character vector (or single string if \code{collapse = TRUE}) of CLI-style arguments.
+#'
+#' @examples
+#' nested_list_to_args(list(a = list(b = c(10, 11, 12)), c = 25))
+#' # Returns: c("--a/b='10' '11' '12'", "--c='25'")
+#'
+#' @keywords internal
+nested_list_to_args <- function(lst, sep = "/", collapse = FALSE) {
+  checkmate::assert_list(lst)
+  checkmate::assert_string(sep)
+  checkmate::assert_flag(collapse)
+  
+  flatten <- function(x, prefix = NULL) {
+    args <- character()
+    
+    for (nm in names(x)) {
+      key <- if (is.null(prefix)) nm else paste(prefix, nm, sep = sep)
+      val <- x[[nm]]
+      
+      if (is.list(val) && !is.null(names(val))) {
+        args <- c(args, flatten(val, key))
+      } else {
+        # quote argument with shQuote to prevent wildcard expansion and other oddities
+        val_str <- paste(shQuote(as.character(val)), collapse = " ")
+        args <- c(args, paste0("--", key, "=", val_str))
+      }
+    }
+    
+    return(args)
+  }
+  
+  args <- flatten(lst)
+  if (collapse) {
+    return(paste(args, collapse = " "))
+  } else {
+    return(args)
+  }
+}
 
 
 #' Parse CLI-style arguments into a nested list using args_to_df()
@@ -442,7 +490,7 @@ prompt_input <- function(prompt = "", prompt_eol=">", instruct = NULL, type = "c
 
   if (!interactive()) stop("prompt_input() requires an interactive session.")
 
-  if (is.null(prompt)) prompt_eol <- ""
+  if (is.null(prompt)) prompt <- ""
   if (is.null(prompt_eol)) prompt_eol <- ""
 
   checkmate::assert_string(prompt)
@@ -1034,4 +1082,71 @@ get_image_quantile <- function(in_file, brain_mask=NULL, quantile=50, exclude_ze
     quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} -k {brain_mask} {pstr} {quantile}"), intern = TRUE, log_file = log_file, singularity_img = fsl_img))
   }
   return(quantile_value)
+}
+
+
+### CURRENTLY ONLY USED BY POSTPROCESSING
+
+
+# Jun 2024: brain mask is required for calculating image quantiles for 2nd and 50th percentiles -- smoothing and intensity normalization
+# Given that it is used only for these quantiles, the fmriprep mask should be fine for this purpose
+# apply_mask is now considered an additional step that is optional and uses the brain_mask in the cfg
+
+to_log <- function(str=NULL, log_file=NULL, stdout=TRUE) {
+  checkmate::assert_string(str)
+  checkmate::assert_string(log_file, null.ok = TRUE)
+  if (is.null(str)) return(invisible(NULL))
+  if (isTRUE(stdout)) cat(str, sep = "\n")
+  if (!is.null(log_file)) cat(str, file = log_file, sep = "\n", append = TRUE)
+  return(invisible(NULL))
+}
+
+out_file_exists <- function(in_file, prefix, overwrite=TRUE) {
+  # helper subfunction to enforce hyphen after initial postprocessing prefix
+  p <- function(in_file, prefix) {
+    has_prefix <- grepl("^\\w+-(sub|confounds).*", in_file, perl = TRUE)
+    if (isTRUE(has_prefix)) {
+      return(prefix)
+    } else {
+      return(paste0(prefix, "-")) # need to append hyphen
+    }
+  }
+
+  in_dir <- dirname(in_file)
+  in_file <- basename(in_file)
+
+  # handle extant file
+  out_file <- glue("{in_dir}/{p(in_file, prefix)}{in_file}")
+  skip <- FALSE
+  if (checkmate::test_file_exists(out_file)) {
+    if (isFALSE(overwrite)) {
+      message(glue("Processed image already exists: {out_file}. Skipping this step."))
+      skip <- TRUE
+    } else {
+      message(glue("Overwriting image: {out_file}."))
+    }
+  }
+  return(list(out_file=out_file, skip=skip))
+}
+
+get_fmriprep_outputs <- function(in_file) {
+  if (grepl("_space-", in_file)) {
+    space_chars <- sub(".*sub-\\d+_task-[^_]+_run-\\d+(.*)_desc-preproc_bold.*", "\\1", in_file)
+  } else {
+    space_chars <- ""
+  }
+  first_chars <- sub("(sub-\\d+_task-[^_]+_run-\\d+).*", "\\1", in_file, perl=TRUE)
+  bold <- Sys.glob(glue("{first_chars}{space_chars}*preproc_bold*nii*"))
+  brain_mask <- Sys.glob(glue("{first_chars}{space_chars}*_desc-brain_mask*nii*"))
+  confounds <- glue("{first_chars}_desc-confounds_timeseries.tsv")
+  if (!checkmate::test_file_exists(confounds)) confounds <- glue("{first_chars}_desc-confounds_regressors.tsv")
+
+  melodic_mix <- glue("{first_chars}_desc-MELODIC_mixing.tsv")
+  noise_ics <- glue("{first_chars}_AROMAnoiseICs.csv")
+  ret_list <- list(bold = bold, brain_mask = brain_mask, confounds = confounds, melodic_mix = melodic_mix, noise_ics = noise_ics)
+  have_files <- sapply(ret_list, checkmate::test_file_exists)
+  ret_list[!have_files] <- NULL  # NULL out missing files
+  
+  ret_list[["prefix"]] <- first_chars # sub id info
+  return(ret_list)
 }

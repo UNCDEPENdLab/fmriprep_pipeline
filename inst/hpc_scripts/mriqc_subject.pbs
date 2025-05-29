@@ -52,4 +52,4 @@ module load fsl/5.0.11 #Using version 6 of FSL creates problems
 
 ####
 [[ "$debug_pipeline" -eq 1 ]] && rel_suffix=c #if debug_pipeline is 1, only echo command to log, don't run it
-rel "${mriqc_location} ${loc_root}/bids/ ${loc_root}/mriqc_IQMs/ participant --participant-label $sub -w ${loc_root}/mriqc_tempfiles && date \"+%m%d%y@%H:%M\" > $loc_bids_root/sub-$sub/.mriqc.complete" $rel_suffix
+rel "${mriqc_location} ${loc_root}/bids/ ${loc_root}/mriqc_IQMs/ participant --participant-label $sub -w ${loc_root}/mriqc_tempfiles && date \"+%m%d%y@%H:%M\" > $loc_bids_root/sub-$sub/.mriqc_complete" $rel_suffix

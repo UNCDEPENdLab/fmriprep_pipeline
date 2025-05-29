@@ -19,6 +19,21 @@ setup_postprocess <- function(scfg = list(), fields = NULL) {
   cat("This step sets up postprocessing.\n")
   scfg <- setup_job(scfg, "postprocess", defaults = defaults)
 
+  if (is.null(scfg$postprocess$input_regex) || "postprocess/input_regex" %in% fields) {
+    scfg$postprocess$input_regex <- prompt_input(
+      "What is the relevant file extension (or regular expression) for inputs?",
+      type = "character", len = 1L, default = "_desc-preproc_bold.nii.gz",
+      instruct = glue("
+      \nPostprocessing is typically only applied to BOLD data that have completed preprocessing in fmriprep.
+      These files usually have a suffix like _desc-preproc_bold.nii.gz. However, you may have postprocessing settings
+      that only apply to certain outputs, such as for a particular experimental task or for resting state.
+
+      What is the file extension for functional data to be postprocessed? If, for example, you only want
+      files for a task called 'ridl', use a regular expression like, _task-ridl.*_desc-preproc_bold.nii.gz.
+      ")
+    )
+  }
+
   # global settings
   if (is.null(scfg$postprocess$keep_intermediates) || "postprocess/keep_intermediates" %in% fields) {
     scfg$postprocess$keep_intermediates <- prompt_input("Do you want to keep postprocess intermediate files? This is typically only for debugging.", type = "flag")
