@@ -34,29 +34,46 @@ run_study <- function(scfg, steps=NULL, prompt = TRUE, debug = FALSE, force = FA
     if ("bids_conversion" %in% steps) {
       if (is.null(scfg$heudiconv$sub_regex)) stop("Cannot run BIDS conversion without a subject regex.")
       if (is.null(scfg$heudiconv$ses_regex)) stop("Cannot run BIDS conversion without a session regex.")
+      if (is.null(scfg$compute_environment$heudiconv_container)) stop("Cannot run BIDS conversion without a heudiconv container.")
     }
 
-    steps <- c(
-      bids_conversion = ifelse(is.null(scfg$compute_environment$heudiconv_container), FALSE, TRUE),
-      bids_validation = ifelse(is.null(scfg$compute_environment$bids_validator), FALSE, TRUE),
-      mriqc = ifelse(is.null(scfg$compute_environment$mriqc_container), FALSE, TRUE),
-      fmriprep = ifelse(is.null(scfg$compute_environment$fmriprep_container), FALSE, TRUE),
-      aroma = ifelse(is.null(scfg$compute_environment$aroma_container), FALSE, TRUE),
-      postprocess = ifelse(is.null(scfg$postprocess$processing_steps), FALSE, TRUE)
-    )
-    if (isTRUE(scfg$run_aroma)) steps <- c(steps, "aroma")
+    if ("bids_validation" %in% steps && !validate_exists(scfg$compute_environment$bids_validator)) {
+      stop("Cannot run BIDS conversion without a bids_validator location.")
+    }
+
+    if ("mriqc" %in% steps && !validate_exists(scfg$compute_environment$mriqc_container)) {
+      stop("Cannot run MRIQC without a valid MRIQC container.")
+    }
+
+    if ("fmriprep" %in% steps && !validate_exists(scfg$compute_environment$fmriprep_container)) {
+      stop("Cannot run fmriprep without a valid fmriprep container.")
+    }
+
+    if ("aroma" %in% steps && !validate_exists(scfg$compute_environment$aroma_container)) {
+      stop("Cannot run AROMA without a valid AROMA container.")
+    }
+
+    if ("postprocess" %in% steps && (is.null(scfg$postprocess$processing_steps))) {
+      stop("Cannot run postprocessing without a valid postprocess configuration.")
+    }
+
+    # if (isTRUE(scfg$run_aroma)) steps <- c(steps, "aroma")
+    nm <- steps
+    steps <- rep(TRUE, length(steps))
+    names(steps) <- nm
+
     scfg$log_level <- "INFO" # how much detail to park in logs
     scfg$debug <- debug # pass forward debug flag from arguments
     scfg$force <- force # pass forward force flag from arguments
   } else {
     steps <- c()
     cat("\nPlease select which steps to run:\n")
-    run_bids_conversion <- ifelse(is.null(scfg$compute_environment$heudiconv_container), FALSE, prompt_input(instruct = "Run BIDS conversion?", type = "flag"))
-    run_bids_validation <- ifelse(is.null(scfg$compute_environment$bids_validator), FALSE, prompt_input(instruct = "Run BIDS validation?", type = "flag"))
-    run_mriqc <- ifelse(is.null(scfg$compute_environment$mriqc_container), FALSE, prompt_input(instruct = "Run MRIQC?", type = "flag"))
-    run_fmriprep <- ifelse(is.null(scfg$compute_environment$fmriprep_container), FALSE, prompt_input(instruct = "Run fmriprep?", type = "flag"))
-    run_aroma <- ifelse(is.null(scfg$compute_environment$aroma_container) && isTRUE(scfg$run_aroma), FALSE, prompt_input(instruct = "Run ICA-AROMA?", type = "flag"))
-    run_postproc <- ifelse(is.null(scfg$postprocess$processing_steps), FALSE, prompt_input(instruct = "Run postprocessing?", type = "flag"))
+    steps["bids_conversion"] <- ifelse(is.null(scfg$compute_environment$heudiconv_container), FALSE, prompt_input(instruct = "Run BIDS conversion?", type = "flag"))
+    steps["bids_validation"] <- ifelse(is.null(scfg$compute_environment$bids_validator), FALSE, prompt_input(instruct = "Run BIDS validation?", type = "flag"))
+    steps["mriqc"] <- ifelse(is.null(scfg$compute_environment$mriqc_container), FALSE, prompt_input(instruct = "Run MRIQC?", type = "flag"))
+    steps["fmriprep"] <- ifelse(is.null(scfg$compute_environment$fmriprep_container), FALSE, prompt_input(instruct = "Run fmriprep?", type = "flag"))
+    steps["aroma"] <- ifelse(is.null(scfg$compute_environment$aroma_container) && isTRUE(scfg$run_aroma), FALSE, prompt_input(instruct = "Run ICA-AROMA?", type = "flag"))
+    steps["postprocess"] <- ifelse(is.null(scfg$postprocess$processing_steps), FALSE, prompt_input(instruct = "Run postprocessing?", type = "flag"))
     if (isFALSE(run_aroma) && "apply_aroma" %in% scfg$postprocess$processing_steps) {
       warning(
         "Postprocessing includes the removal of motion-related AROMA components from the fMRI data, but you declined ",
@@ -68,15 +85,6 @@ run_study <- function(scfg, steps=NULL, prompt = TRUE, debug = FALSE, force = FA
 
     scfg$force <- prompt_input(instruct = "Force each processing step, even if it appears to be complete?", type = "flag")
 
-    steps <- c(
-        bids_conversion = run_bids_conversion,
-        bids_validation = run_bids_validation,
-        mriqc = run_mriqc,
-        fmriprep = run_fmriprep,
-        aroma = run_aroma,
-        postprocess = run_postproc
-    )
-    
     scfg$log_level <- prompt_input(
       instruct = "What level of detail would you like in logs? Options are INFO, DEBUG, ERROR.",
       type = "character", among=c("INFO", "ERROR", "DEBUG")
@@ -90,7 +98,7 @@ run_study <- function(scfg, steps=NULL, prompt = TRUE, debug = FALSE, force = FA
     dicom_sub_dir = character(), dicom_ses_dir = character(), stringsAsFactors = FALSE
   )
 
-  if (isTRUE(run_bids_conversion)) {
+  if (isTRUE(steps["bids_conversion"])) {
     subject_dicom_dirs <- get_subject_dirs(scfg$dicom_directory, sub_regex = scfg$heudiconv$sub_regex, ses_regex = scfg$heudiconv$ses_regex, full.names = TRUE)
 
     # add DICOM prefix
@@ -115,6 +123,7 @@ run_study <- function(scfg, steps=NULL, prompt = TRUE, debug = FALSE, force = FA
 
     for (ss in seq_along(subject_dirs)) {
       process_subject(scfg, subject_dirs[[ss]], steps)
+      break
     }
   }
 }

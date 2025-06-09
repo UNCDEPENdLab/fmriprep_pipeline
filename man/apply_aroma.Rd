@@ -8,7 +8,7 @@ apply_aroma(
   in_file,
   prefix = "a",
   mixing_file,
-  noise_file,
+  noise_ics,
   overwrite = FALSE,
   log_file = NULL,
   use_R = FALSE,
@@ -22,7 +22,7 @@ apply_aroma(
 
 \item{mixing_file}{Path to the MELODIC mixing matrix (e.g., \code{*_desc-MELODIC_mixing.tsv}).}
 
-\item{noise_file}{Path to the file listing ICA components to regress (e.g., \code{*_AROMAnoiseICs.csv}).}
+\item{noise_ics}{Vector of ICA components to regress out (usually pulled from relevant aroma_timeseries.tsv file).}
 
 \item{overwrite}{Logical; whether to overwrite the output file if it exists.}
 

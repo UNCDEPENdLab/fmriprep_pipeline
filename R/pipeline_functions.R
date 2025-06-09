@@ -204,6 +204,10 @@ nested_list_to_args <- function(lst, sep = "/", collapse = FALSE) {
 #'
 #' @keywords internal
 parse_cli_args <- function(args, sep = "/", type_values = TRUE) {
+  checkmate::assert_character(args)
+
+  # always collapse into a single string to avoid continuation errors in args_to_df
+  if (length(args) > 1L) args <- paste(args, collapse = " ")
   df <- args_to_df(args)
   assignments <- paste(df$lhs, df$rhs, sep="=")
   set_nested_values(assignments, sep = sep, type_values = type_values)
@@ -888,13 +892,12 @@ rm_niftis <- function(files=NULL) {
   }
 }
 
-
-run_fsl_command <- function(args, fsldir=NULL, echo=TRUE, run=TRUE, log_file=NULL, intern=FALSE, stop_on_fail=TRUE, singularity_img=NULL) {
+run_fsl_command <- function(args, fsldir=NULL, echo=TRUE, run=TRUE, log_file=NULL, intern=FALSE, stop_on_fail=TRUE, fsl_img=NULL) {
   
-  if (!is.null(singularity_img)) {
+  if (!is.null(fsl_img)) {
     # if we are using a singularity container, always look inside the container for FSLDIR
-    checkmate::assert_file_exists(singularity_img, access = "r")
-    fsldir <- system(glue("singularity exec {singularity_img} printenv FSLDIR"), intern = TRUE)
+    checkmate::assert_file_exists(fsl_img, access = "r")
+    fsldir <- system(glue("singularity exec {fsl_img} printenv FSLDIR"), intern = TRUE)
     if (length(fsldir) == 0L) stop("Cannot find FSLDIR inside singularity container")
   } else if (is.null(fsldir)) {
     # look for FSLDIR in system environment if not passed in    
@@ -928,15 +931,15 @@ run_fsl_command <- function(args, fsldir=NULL, echo=TRUE, run=TRUE, log_file=NUL
   fslsetup <- paste0("FSLDIR=", fsldir, "; PATH=${FSLDIR}/bin:${PATH}; . ${FSLDIR}/etc/fslconf/fsl.sh; ${FSLDIR}/bin/")
 
   # Command to run (basic or singularity-wrapped)
-  base_cmd <- paste0(fslsetup, " ", args)
+  base_cmd <- paste0(fslsetup, args)
 
-  if (!is.null(singularity_img)) {
+  if (!is.null(fsl_img)) {
     # Get absolute working directory to mount
     workdir <- normalizePath(getwd())
     singularity_cmd <- paste(
       "singularity exec",
       paste0("--bind ", workdir, ":", workdir),
-      singularity_img,
+      fsl_img,
       "bash -c",
       shQuote(base_cmd)
     )
@@ -952,7 +955,7 @@ run_fsl_command <- function(args, fsldir=NULL, echo=TRUE, run=TRUE, log_file=NUL
   #cat("FSL command: ", full_cmd, "\n")
   if (!is.null(log_file)) cat(args, file=log_file, append=TRUE, sep="\n")
   if (isTRUE(echo)) cat(args, "\n")
-  
+
   retcode <- if (isTRUE(run)) system(full_cmd) else 0 # return 0 if not run
 
   if (file.exists(efile)) {
@@ -1016,7 +1019,7 @@ mat_to_nii <- function(mat, ni_out="mat", fsl_img=NULL) {
   tr <- 1
   xorigin <- yorigin <- zorigin <- 0
 
-  run_fsl_command(glue("fslcreatehd {ncol(mat)} {ydim} {zdim} {nrow(mat)} {xsz} {ysz} {zsz} {tr} {xorigin} {yorigin} {zorigin} 64 {ni_out}"), singularity_img = fsl_img)
+  run_fsl_command(glue("fslcreatehd {ncol(mat)} {ydim} {zdim} {nrow(mat)} {xsz} {ysz} {zsz} {tr} {xorigin} {yorigin} {zorigin} 64 {ni_out}"), fsl_img = fsl_img)
 
   ## read empty NIfTI into R
   nif <- readNIfTI(ni_out, reorient = FALSE)
@@ -1076,10 +1079,10 @@ get_image_quantile <- function(in_file, brain_mask=NULL, quantile=50, exclude_ze
   checkmate::assert_number(quantile, lower = 0, upper = 100)
   pstr <- ifelse(isTRUE(exclude_zero), "-P", "-p")
   if (is.null(brain_mask)) {
-     quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} {pstr} {quantile}"), intern = TRUE, log_file = log_file, singularity_img = fsl_img))
+     quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} {pstr} {quantile}"), intern = TRUE, log_file = log_file, fsl_img = fsl_img))
   } else {
     if (!checkmate::test_file_exists(brain_mask)) checkmate::assert_file_exists(paste0(brain_mask, ".nii.gz"))
-    quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} -k {brain_mask} {pstr} {quantile}"), intern = TRUE, log_file = log_file, singularity_img = fsl_img))
+    quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} -k {brain_mask} {pstr} {quantile}"), intern = TRUE, log_file = log_file, fsl_img = fsl_img))
   }
   return(quantile_value)
 }
@@ -1129,24 +1132,97 @@ out_file_exists <- function(in_file, prefix, overwrite=TRUE) {
   return(list(out_file=out_file, skip=skip))
 }
 
+#' Identify fMRIPrep-Derived Outputs for a NIfTI File
+#'
+#' Given the path to a preprocessed NIfTI file from fMRIPrep or fMRIPost, this function
+#' identifies and returns associated derivative files in the same directory. This includes
+#' the corresponding brain mask, confound regressors, ICA-AROMA melodic mixing matrix,
+#' AROMA classification metrics, and a list of rejected noise components (if available).
+#'
+#' This function assumes filenames follow BIDS Derivatives conventions and uses the
+#' extracted BIDS entities to reconstruct expected filenames via `construct_bids_filename()`.
+#'
+#' @param in_file A character string giving the path to a preprocessed NIfTI `.nii.gz` file
+#'   generated by fMRIPrep (e.g., with suffix `_desc-preproc_bold.nii.gz`).
+#'
+#' @return A named list containing the following elements:
+#' \describe{
+#'   \item{bold}{The input BOLD file path (returned if found).}
+#'   \item{brain_mask}{The corresponding brain mask file (or `NULL` if not found).}
+#'   \item{confounds}{The path to the confounds `.tsv` file (or `NULL`).}
+#'   \item{melodic_mix}{Path to the melodic mixing matrix from ICA-AROMA (if present).}
+#'   \item{aroma_metrics}{Path to the AROMA classification metrics file (if present).}
+#'   \item{noise_ics}{A vector of rejected ICA components based on AROMA classification (or `NULL`).}
+#'   \item{prefix}{A string encoding the core BIDS identifier used to construct expected filenames.}
+#' }
+#'
+#' @details
+#' The function checks for two possible confounds files (`desc-confounds_timeseries.tsv` and
+#' `desc-confounds_regressors.tsv`), and attempts to resolve AROMA-rejected ICs from the
+#' AROMA classification metrics file (`_desc-aroma_metrics.tsv`) if present.
+#'
+#' @seealso [extract_bids_info()], [construct_bids_filename()]
+#'
+#' @examples
+#' \dontrun{
+#' f <- "/path/to/sub-01_task-rest_space-MNI152NLin6Asym_desc-preproc_bold.nii.gz"
+#' outputs <- get_fmriprep_outputs(f)
+#' outputs$brain_mask
+#' }
+#'
+#' @export
 get_fmriprep_outputs <- function(in_file) {
-  if (grepl("_space-", in_file)) {
-    space_chars <- sub(".*sub-\\d+_task-[^_]+_run-\\d+(.*)_desc-preproc_bold.*", "\\1", in_file)
-  } else {
-    space_chars <- ""
-  }
-  first_chars <- sub("(sub-\\d+_task-[^_]+_run-\\d+).*", "\\1", in_file, perl=TRUE)
-  bold <- Sys.glob(glue("{first_chars}{space_chars}*preproc_bold*nii*"))
-  brain_mask <- Sys.glob(glue("{first_chars}{space_chars}*_desc-brain_mask*nii*"))
-  confounds <- glue("{first_chars}_desc-confounds_timeseries.tsv")
-  if (!checkmate::test_file_exists(confounds)) confounds <- glue("{first_chars}_desc-confounds_regressors.tsv")
+  checkmate::assert_file_exists(in_file)
+  in_file <- normalizePath(in_file)
+  f_info <- as.list(extract_bids_info(in_file)) # pull into BIDS fields for file expectations
 
-  melodic_mix <- glue("{first_chars}_desc-MELODIC_mixing.tsv")
-  noise_ics <- glue("{first_chars}_AROMAnoiseICs.csv")
-  ret_list <- list(bold = bold, brain_mask = brain_mask, confounds = confounds, melodic_mix = melodic_mix, noise_ics = noise_ics)
-  have_files <- sapply(ret_list, checkmate::test_file_exists)
-  ret_list[!have_files] <- NULL  # NULL out missing files
-  
-  ret_list[["prefix"]] <- first_chars # sub id info
-  return(ret_list)
+  # Extract directory and filename
+  dir_path <- dirname(in_file)
+  base <- basename(in_file)
+
+  # Remove extension
+  base <- sub("\\.nii(\\.gz)?$", "", base)
+
+  # Extract core identifier (everything up to desc-*)
+  # prefix <- sub("_desc-preproc_bold$", "", base)
+
+  prefix <- glue("sub-{f_info$subject}_task-{f_info$task}")
+  if (!is.na(f_info$run)) prefix <- glue("{prefix}_run-{f_info$run}")
+
+  # Possible base path (prefix may include space/acq/etc)
+  bold <- file.path(dir_path, construct_bids_filename(modifyList(f_info, list(suffix = "bold"))))
+  brain_mask <- file.path(dir_path, construct_bids_filename(modifyList(f_info, list(description = "brain", suffix = "mask"))))
+
+  # Check for two variants of confounds
+  conf1 <- file.path(dir_path, paste0(prefix, "_desc-confounds_timeseries.tsv"))
+  conf2 <- file.path(dir_path, paste0(prefix, "_desc-confounds_regressors.tsv"))
+  confounds <- if (file.exists(conf1)) conf1 else if (file.exists(conf2)) conf2 else NA
+
+  melodic_mix <- file.path(dir_path, construct_bids_filename(modifyList(f_info, list(resolution = "2", space = NA, description = "melodic", suffix = "mixing", ext = ".tsv"))))
+
+  # this is no longer output by fmripost-aroma
+  # noise_ics <- file.path(dir_path, paste0(prefix, "_AROMAnoiseICs.csv"))
+
+  # need to read the aroma metrics file and figure it out.
+  aroma_metrics <- file.path(dir_path, glue("{prefix}_desc-aroma_metrics.tsv"))
+
+  if (file.exists(aroma_metrics)) {
+    adat <- read.table(aroma_metrics, header = TRUE, sep = "\t")
+    noise_ics <- which(adat$classification == "rejected")
+  } else {
+    noise_ics <- NULL
+  }
+
+  # Assemble output
+  output <- list(
+    bold = if (file.exists(bold)) bold else NULL,
+    brain_mask = if (file.exists(brain_mask)) brain_mask else NULL,
+    confounds = if (!is.na(confounds)) confounds else NULL,
+    melodic_mix = if (file.exists(melodic_mix)) melodic_mix else NULL,
+    aroma_metrics = if (file.exists(aroma_metrics)) aroma_metrics else NULL,
+    noise_ics = noise_ics,
+    prefix = prefix
+  )
+
+  return(output)
 }

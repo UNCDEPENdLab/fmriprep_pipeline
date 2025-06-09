@@ -8,6 +8,9 @@ load_study <- function(file = NULL, validate=TRUE) {
   scfg <- read_yaml(file)
   class(scfg) <- c(class(scfg), "bg_study_cfg") # add class to the object
   if (validate) scfg <- validate_study(scfg)
+
+  # fill in any gaps in the config
+  if (!is.null(attr(scfg, "gaps"))) scfg <- setup_study(scfg, fields = attr(scfg, "gaps"))
   return(scfg)
 }
 
@@ -88,7 +91,7 @@ setup_study <- function(input = NULL, fields = NULL) {
     if (create) dir.create(scfg$fmriprep_directory, recursive = TRUE) # should probably force this to happen
   }
 
-  # location of fmriprep outputs -- enforce that this must be within the project directory
+  # location of mriqc reports -- enforce that this must be within the project directory
   scfg$mriqc_directory <- file.path(scfg$project_directory, "mriqc_reports")
   if (!checkmate::test_directory_exists(scfg$mriqc_directory)) {
     create <- prompt_input(instruct = glue("The directory {scfg$mriqc_directory} does not exist. Would you like me to create it?\n"), type = "flag")

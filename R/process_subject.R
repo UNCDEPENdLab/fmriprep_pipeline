@@ -336,9 +336,10 @@ submit_postprocess <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NUL
   if (!checkmate::test_file_exists(postproc_rscript)) stop("Cannot find postprocess_subject.R")
 
   # postprocessing
-  scfg$input <- sub_dir # copy the location of this sub/ses dir into the config to pass on as CLI
-  scfg$fsl_img <- scfg$fmriprep_container # always pass fmriprep container for running FSL commands in postprocessing
-  postproc_cli <- nested_list_to_args(scfg$postprocess) # convert postprocess config into CLI args
+  scfg$postprocess$input <- file.path(scfg$fmriprep_directory, glue("sub-{sub_id}")) # populate the location of this sub/ses dir into the config to pass on as CLI
+  if (!is.null(ses_id) && !is.na(ses_id)) scfg$postprocess$input <- file.path(scfg$postprocess$input, glue("ses-{ses_id}")) # add session subdir if relevant
+  scfg$postprocess$fsl_img <- scfg$compute_environment$fmriprep_container # always pass fmriprep container for running FSL commands in postprocessing
+  postproc_cli <- nested_list_to_args(scfg$postprocess, collapse=TRUE) # convert postprocess config into CLI args
   
   env_variables <- c(
     env_variables,
@@ -346,7 +347,7 @@ submit_postprocess <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NUL
     sub_id = sub_id,
     ses_id = ses_id,
     postproc_cli = postproc_cli,
-    postproc_rscript = postproc_rscript,
+    postproc_rscript = postproc_rscript
   )
 
   job_id <- fmri.pipeline::cluster_job_submit(sched_script,

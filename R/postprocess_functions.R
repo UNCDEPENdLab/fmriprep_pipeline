@@ -7,7 +7,6 @@ postprocess_subject <- function(in_file, cfg=NULL) {
   # checkmate::assert_list(processing_sequence)
   proc_files <- get_fmriprep_outputs(in_file)
 
-
   # default configuration settings -- not sure whether this should be allowed?
   default_cfg <- list(
     tr = NULL,
@@ -41,7 +40,6 @@ postprocess_subject <- function(in_file, cfg=NULL) {
   fsl_img <- cfg$fsl_img
 
   sdir <- dirname(in_file)
-  setwd(sdir)
 
   # add any defaults if user's config is incomplete
   cfg <- populate_defaults(cfg, default_cfg)
@@ -65,7 +63,7 @@ postprocess_subject <- function(in_file, cfg=NULL) {
   to_log(paste0("# Start fmriprep postprocessing: ", as.character(start_time)), log_file = log_file)
   
   # determine brain mask to be used for computing intensity thresholds for susan and normalization
-  if (is.null(cfg$brain_mask)) {
+  if (is.null(cfg$brain_mask) || is.na(cfg$brain_mask[1L])) {
     # if no brain mask is provided, use fmriprep brain mask
     if (!is.null(proc_files$brain_mask)) {
       brain_mask <- proc_files$brain_mask
@@ -77,7 +75,7 @@ postprocess_subject <- function(in_file, cfg=NULL) {
     # use user-specified brain mask
     brain_mask <- glue(cfg$brain_mask)
   }
-  
+
   cur_file <- proc_files$bold
   file_set <- cur_file
 
@@ -122,8 +120,8 @@ postprocess_subject <- function(in_file, cfg=NULL) {
     if ("apply_aroma" %in% cfg$processing_steps) {
       to_log("# Removing AROMA noise components from confounds", log_file=log_file)
       confound_nii <- apply_aroma(confound_nii,
-        mixing_file = proc_files$melodic_mix,
-        noise_file = proc_files$noise_ics, overwrite=cfg$overwrite, log_file=log_file, use_R=TRUE
+        mixing_file = proc_files$melodic_mix, noise_ics = proc_files$noise_ics, 
+        overwrite=cfg$overwrite, log_file=log_file, use_R=TRUE, fsl_img = fsl_img
       )
     }
 
@@ -131,8 +129,8 @@ postprocess_subject <- function(in_file, cfg=NULL) {
     if ("temporal_filter" %in% cfg$processing_steps) {
       to_log("# Temporally filtering confounds", log_file=log_file)
       confound_nii <- temporal_filter(confound_nii,
-        tr = cfg$tr, low_pass_hz = cfg$temporal_filter$low_pass_hz,
-        high_pass_hz = cfg$temporal_filter$high_pass_hz, overwrite=cfg$overwrite, log_file=log_file
+        tr = cfg$tr, low_pass_hz = cfg$temporal_filter$low_pass_hz, high_pass_hz = cfg$temporal_filter$high_pass_hz, 
+        overwrite=cfg$overwrite, log_file=log_file, fsl_img = fsl_img
       )
     }
 
@@ -186,8 +184,8 @@ postprocess_subject <- function(in_file, cfg=NULL) {
       proc_prefix <- paste0(cfg$spatial_smooth$prefix, proc_prefix)
       to_log(glue("# Spatial smoothing with FHWM {cfg$spatial_smooth$fwhm_mm}mm kernel"), log_file = log_file)
       cur_file <- spatial_smooth(cur_file,
-        brain_mask = brain_mask, prefix = cfg$spatial_smooth$prefix,
-        fwhm_mm = cfg$spatial_smooth$fwhm_mm, overwrite = cfg$overwrite, log_file = log_file
+        brain_mask = brain_mask, prefix = cfg$spatial_smooth$prefix, fwhm_mm = cfg$spatial_smooth$fwhm_mm, 
+        overwrite = cfg$overwrite, log_file = log_file, fsl_img = fsl_img
       )
       file_set <- c(file_set, cur_file)
     } else if (step == "apply_aroma") {
@@ -195,8 +193,8 @@ postprocess_subject <- function(in_file, cfg=NULL) {
       to_log("# Removing AROMA noise components from fMRI data", log_file=log_file)
       cur_file <- apply_aroma(cur_file, prefix = cfg$apply_aroma$prefix,
         mixing_file = proc_files$melodic_mix,
-        noise_file = proc_files$noise_ics,
-        overwrite=cfg$overwrite, log_file=log_file
+        noise_ics = proc_files$noise_ics,
+        overwrite=cfg$overwrite, log_file=log_file, fsl_img = fsl_img
       )
       file_set <- c(file_set, cur_file)
     } else if (step == "temporal_filter") {
@@ -205,7 +203,7 @@ postprocess_subject <- function(in_file, cfg=NULL) {
       cur_file <- temporal_filter(cur_file, prefix = cfg$temporal_filter$prefix,
         tr = cfg$tr, low_pass_hz = cfg$temporal_filter$low_pass_hz,
         high_pass_hz = cfg$temporal_filter$high_pass_hz,
-        overwrite=cfg$overwrite, log_file=log_file
+        overwrite=cfg$overwrite, log_file=log_file, fsl_img = fsl_img
       )
       file_set <- c(file_set, cur_file)
     } else if (step == "intensity_normalize") {
@@ -214,7 +212,7 @@ postprocess_subject <- function(in_file, cfg=NULL) {
       cur_file <- intensity_normalize(cur_file, prefix = cfg$intensity_normalize$prefix,
         brain_mask = brain_mask,
         global_median = cfg$intensity_normalize$global_median,
-        overwrite=cfg$overwrite, log_file=log_file
+        overwrite=cfg$overwrite, log_file=log_file, fsl_img = fsl_img
       )
       file_set <- c(file_set, cur_file)
     } else if (step == "confound_regression") {
@@ -222,7 +220,7 @@ postprocess_subject <- function(in_file, cfg=NULL) {
       to_log(glue("# Removing confound regressors from fMRI data using file: {to_regress}"), log_file = log_file)
       cur_file <- confound_regression(cur_file, prefix = cfg$confound_regression$prefix,
         to_regress = to_regress,
-        overwrite=cfg$overwrite, log_file = log_file
+        overwrite=cfg$overwrite, log_file = log_file, fsl_img = fsl_img
       )
       file_set <- c(file_set, cur_file)
     } else if (step == "apply_mask") {
@@ -230,7 +228,7 @@ postprocess_subject <- function(in_file, cfg=NULL) {
       to_log(glue("# Masking fMRI data using file: {brain_mask}"), log_file = log_file)
       cur_file <- apply_mask(cur_file, prefix = cfg$apply_mask$prefix,
         mask_file = brain_mask,
-        overwrite=cfg$overwrite, log_file = log_file
+        overwrite=cfg$overwrite, log_file = log_file, fsl_img = fsl_img
       )
       file_set <- c(file_set, cur_file)
     }
@@ -291,7 +289,7 @@ apply_mask <- function(in_file, mask_file, prefix="m", overwrite=FALSE, log_file
     out_file <- res$out_file
   }
 
-  run_fsl_command(glue("fslmaths {in_file} -mas {mask_file} {out_file} -odt float"), log_file = log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -mas {mask_file} {out_file} -odt float"), log_file = log_file, fsl_img = fsl_img)
   return(out_file)
 }
 
@@ -354,8 +352,8 @@ temporal_filter <- function(in_file, prefix="f", low_pass_hz=0, high_pass_hz=1/1
   }
 
   temp_tmean <- tempfile(pattern="tmean")
-  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file=log_file, singularity_img = fsl_img)
-  run_fsl_command(glue("fslmaths {in_file} -bptf {hp_volumes} {lp_volumes} -add {temp_tmean} {out_file}"), log_file = log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file=log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -bptf {hp_volumes} {lp_volumes} -add {temp_tmean} {out_file}"), log_file = log_file, fsl_img = fsl_img)
   
   rm_niftis(temp_tmean) # clean up temporal mean image
   
@@ -371,7 +369,7 @@ temporal_filter <- function(in_file, prefix="f", low_pass_hz=0, high_pass_hz=1/1
 #' @param in_file Path to the input 4D NIfTI file.
 #' @param prefix Prefix to prepend to the output file name.
 #' @param mixing_file Path to the MELODIC mixing matrix (e.g., \code{*_desc-MELODIC_mixing.tsv}).
-#' @param noise_file Path to the file listing ICA components to regress (e.g., \code{*_AROMAnoiseICs.csv}).
+#' @param noise_ics Vector of ICA components to regress out (usually pulled from relevant aroma_timeseries.tsv file).
 #' @param overwrite Logical; whether to overwrite the output file if it exists.
 #' @param log_file Optional path to a file for logging FSL command output.
 #' @param use_R Logical; if \code{TRUE}, use an R wrapper script (\code{fsl_regfilt.R}) instead of \code{fsl_regfilt}.
@@ -382,7 +380,7 @@ temporal_filter <- function(in_file, prefix="f", low_pass_hz=0, high_pass_hz=1/1
 #' @keywords internal
 #' @importFrom glue glue
 #' @importFrom checkmate assert_string test_file_exists
-apply_aroma <- function(in_file, prefix = "a", mixing_file, noise_file, overwrite = FALSE, log_file = NULL, use_R = FALSE, fsl_img = NULL) {
+apply_aroma <- function(in_file, prefix = "a", mixing_file, noise_ics, overwrite = FALSE, log_file = NULL, use_R = FALSE, fsl_img = NULL) {
   # checkmate::assert_file_exists(in_file)
   checkmate::assert_string(prefix)
   if (isFALSE(checkmate::test_file_exists(mixing_file))) {
@@ -390,8 +388,8 @@ apply_aroma <- function(in_file, prefix = "a", mixing_file, noise_file, overwrit
     return(in_file)
   }
 
-  if (isFALSE(checkmate::test_file_exists(noise_file))) {
-    warning(glue("Cannot find ICA noise components file corresponding to {in_file}. Skipping AROMA regression"))
+  if (isFALSE(checkmate::test_integerish(noise_ics, lower=1))) {
+    warning(glue("noise_ics must be a vector of integers identifying components to regress out. Skipping AROMA regression"))
     return(in_file)
   }
 
@@ -404,17 +402,18 @@ apply_aroma <- function(in_file, prefix = "a", mixing_file, noise_file, overwrit
   }
 
   # just read in the comma-separated noise ICs
-  noise_ics <- readLines(noise_file, warn = FALSE)
+  noise_ics <- paste(noise_ics, collapse=",") # fsl_regfilt requires comma-separated list
 
   # for some reason, fsl_regfilt blows up when we try to feed a regressors x 1 x 1 x timepoints NIfTI
   # fall back to R in this case
   if (isTRUE(use_R)) {
-    cmd <- glue("fsl_regfilt.R {in_file} {mixing_file} {noise_file} 1 {out_file}")
+    stop("Need to change R script to accept comma-separated list")
+    #cmd <- glue("fsl_regfilt.R {in_file} {mixing_file} {noise_file} 1 {out_file}")
     to_log(cmd, log_file=log_file)
     system(cmd)
   } else {
     cmd <- glue("fsl_regfilt -i {in_file} -o {out_file} -d {mixing_file} -f {noise_ics}")
-    run_fsl_command(cmd, log_file = log_file, singularity_img = fsl_img)
+    run_fsl_command(cmd, log_file = log_file, fsl_img = fsl_img)
   }
   return(out_file)
 }
@@ -446,6 +445,8 @@ spatial_smooth <- function(in_file, prefix = "s", fwhm_mm = 6, brain_mask = NULL
   checkmate::assert_string(prefix)
   checkmate::assert_number(fwhm_mm, lower = 0.1)
 
+  browser()
+
   # handle extant file
   res <- out_file_exists(in_file, prefix, overwrite)
   if (isTRUE(res$skip)) {
@@ -457,21 +458,21 @@ spatial_smooth <- function(in_file, prefix = "s", fwhm_mm = 6, brain_mask = NULL
   fwhm_to_sigma <- sqrt(8 * log(2)) # Details here: https://www.mail-archive.com/hcp-users@humanconnectome.org/msg01393.html
   sigma <- fwhm_mm / fwhm_to_sigma
 
-  p2_intensity <- get_image_quantile(in_file, brain_mask, 2, log_file = log_file)
-  median_intensity <- get_image_quantile(in_file, brain_mask, 50, log_file = log_file)
+  p2_intensity <- get_image_quantile(in_file, brain_mask, 2, log_file = log_file, fsl_img = fsl_img)
+  median_intensity <- get_image_quantile(in_file, brain_mask, 50, log_file = log_file, fsl_img = fsl_img)
   susan_thresh <- (median_intensity - p2_intensity) * .75 # also see featlib.tcl
 
   # always compute extents mask that is reapplied to data post-smoothing to avoid any "new" voxels
   extents_mask <- tempfile(pattern = "extents_mask")
-  run_fsl_command(glue("fslmaths {in_file} -Tmin -bin {extents_mask} -odt char"), log_file = log_file, singularity_img = fsl_img) # save extents to temp file
+  run_fsl_command(glue("fslmaths {in_file} -Tmin -bin {extents_mask} -odt char"), log_file = log_file, fsl_img = fsl_img) # save extents to temp file
 
   # compute mean functional image used in susan
   temp_tmean <- tempfile(pattern = "tmean")
-  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file = log_file, singularity_img = fsl_img) # save tmean to temporary file
-  run_fsl_command(glue("susan {in_file} {susan_thresh} {sigma} 3 1 1 {temp_tmean} {susan_thresh} {out_file}"), log_file = log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file = log_file, fsl_img = fsl_img) # save tmean to temporary file
+  run_fsl_command(glue("susan {in_file} {susan_thresh} {sigma} 3 1 1 {temp_tmean} {susan_thresh} {out_file}"), log_file = log_file, fsl_img = fsl_img)
 
   # apply extents mask
-  run_fsl_command(glue("fslmaths {out_file} -mul {extents_mask} {out_file} -odt float"), log_file = log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("fslmaths {out_file} -mul {extents_mask} {out_file} -odt float"), log_file = log_file, fsl_img = fsl_img)
 
   rm_niftis(c(temp_tmean, extents_mask, glue("{out_file}_usan_size"))) # cleanup temp files
 
@@ -513,10 +514,10 @@ intensity_normalize <- function(in_file, prefix="n", brain_mask=NULL, global_med
     out_file <- res$out_file
   }
 
-  median_intensity <- get_image_quantile(in_file, brain_mask, 50, log_file=log_file)
+  median_intensity <- get_image_quantile(in_file, brain_mask, 50, log_file=log_file, fsl_img=fsl_img)
   rescaling_factor <- global_median / median_intensity
 
-  run_fsl_command(glue("fslmaths {in_file} -mul {rescaling_factor} {out_file} -odt float"), log_file=log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -mul {rescaling_factor} {out_file} -odt float"), log_file=log_file, fsl_img = fsl_img)
   return(out_file)
 }
 
@@ -556,13 +557,13 @@ confound_regression <- function(in_file, to_regress=NULL, prefix="r", overwrite=
 
   # convert text file to FSL vest file for fsl_glm to accept it
   vest_file <- tempfile(pattern = "regressors", fileext = ".mat")
-  run_fsl_command(glue("Text2Vest {to_regress} {vest_file}"), log_file = log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("Text2Vest {to_regress} {vest_file}"), log_file = log_file, fsl_img = fsl_img)
   
   # because the residuals will be demeaned and intensity normalization should follow this step, add back in the temporal mean from the pre-regression image
   temp_tmean <- tempfile(pattern="tmean")
-  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file=log_file, singularity_img = fsl_img)
-  run_fsl_command(glue("fsl_glm -i {in_file} -d {vest_file} --out_res={out_file}"), log_file = log_file, singularity_img = fsl_img)
-  run_fsl_command(glue("fslmaths {out_file} -add {temp_tmean} {out_file}"), log_file=log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file=log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("fsl_glm -i {in_file} -d {vest_file} --out_res={out_file}"), log_file = log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("fslmaths {out_file} -add {temp_tmean} {out_file}"), log_file=log_file, fsl_img = fsl_img)
 
   # 3dTproject for regression (deprecated to keep all commands in FSL)
   # regress_cmd <- glue("3dTproject -input {in_file} -prefix {out_file}_afni -ort {to_regress} -polort 0")
@@ -597,26 +598,26 @@ compute_brain_mask <- function(in_file, log_file = NULL) {
 
   # first use FSL bet on the mean functional to get a starting point
   tmean_file <- tempfile(pattern="tmean")
-  run_fsl_command(glue("fslmaths {in_file} -Tmean {tmean_file}"), log_file = log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -Tmean {tmean_file}"), log_file = log_file, fsl_imgmg)
   
   temp_bet <- tempfile()
-  run_fsl_command(glue("bet {tmean_file} {temp_bet} -R -f 0.3 -m -n"), log_file = log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("bet {tmean_file} {temp_bet} -R -f 0.3 -m -n"), log_file = log_file, fsl_img = fsl_img)
 
   temp_stripped <- tempfile(pattern="epi_bet")
-  run_fsl_command(glue("fslmaths {in_file} -mas {temp_bet}_mask {temp_stripped}"), log_file = log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -mas {temp_bet}_mask {temp_stripped}"), log_file = log_file, fsl_imgmg)
 
   # now compute 2nd and 98th percentiles on skull-stripped image
-  p2 <- get_image_quantile(temp_stripped, quantile=2, exclude_zero = FALSE, log_file = log_file)
-  p98 <- get_image_quantile(temp_stripped, quantile=98, exclude_zero = FALSE, log_file = log_file)
+  p2 <- get_image_quantile(temp_stripped, quantile=2, exclude_zero = FALSE, log_file = log_file, fsl_img = fsl_img)
+  p98 <- get_image_quantile(temp_stripped, quantile=98, exclude_zero = FALSE, log_file = log_file, fsl_img = fsl_img)
   
   thresh <- p2 + (p98 - p2)/10
 
   # apply this threshold to the epi_bet image, then take Tmin and binarize to form mask
   temp_mask <- tempfile(pattern = "mask_98_2")
-  run_fsl_command(glue("fslmaths {temp_stripped} -thr {thresh} -Tmin -bin {temp_mask}"), log_file=log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("fslmaths {temp_stripped} -thr {thresh} -Tmin -bin {temp_mask}"), log_file=log_file, fsl_img = fsl_img)
 
   # create dil1x copy as well if this is used elsewhere
-  run_fsl_command(glue("fslmaths {temp_mask} -dilF {temp_mask}_dil1x"), log_file = log_file, singularity_img = fsl_img)
+  run_fsl_command(glue("fslmaths {temp_mask} -dilF {temp_mask}_dil1x"), log_file = log_file, fsl_img = fsl_img)
 
   # cleanup temp files
   rm_niftis(c(tmean_file, temp_bet, temp_stripped))

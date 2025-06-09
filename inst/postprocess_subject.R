@@ -31,8 +31,20 @@ for (pkg in c("glue", "oro.nifti", "checkmate", "data.table", "yaml")) {
   }
 }
 
+# for debugging
+# args <- paste(c(
+#   "--keep_intermediates='FALSE' --overwrite='TRUE' --tr='0.6' --apply_mask='TRUE' --brain_mask='NA'",
+#   "--processing_steps='spatial_smooth' 'apply_aroma' 'temporal_filter' 'intensity_normalize' --spatial_smooth/fwhm_mm='5'",
+#   "--spatial_smooth/prefix='s' --apply_aroma/nonaggressive='TRUE' --apply_aroma/prefix='a' --temporal_filter/low_pass_hz='0'",
+#   "--temporal_filter/high_pass_hz='0.00833' --temporal_filter/prefix='f' --intensity_normalize/global_median='10000' --intensity_normalize/prefix='n'",
+#   "--confound_calculate/columns='filt*' --confound_calculate/noproc_columns='nofilt*' --confound_calculate/demean='TRUE'",
+#   "--confound_calculate/output_file='confound.txt' --force_processing_order='FALSE'",
+#   "--input='/proj/mnhallqlab/projects/preproc_pipeline_test_data/data_fmriprep/sub-540294'",
+#   "--fsl_img='/proj/mnhallqlab/users/michael/fmriprep_pipeline_setup/fmriprep-25.0.0.simg'"
+# ), collapse = " ")
+
 # parse CLI inputs into a nested list, if relevant
-cli_args <- parse_cli_args(args)
+cli_args <- BGprocess:::parse_cli_args(args)
 
 if (!is.null(cli_args$config_yaml)) {
   checkmate::assert_file_exists(cli_args$config_yaml)
@@ -43,15 +55,14 @@ if (!is.null(cli_args$config_yaml)) {
 }
 
 # Now add additional command line arguments to cfg -- this leads any settings in YAML to be overridden by the same CLI arguments
-cfg <- set_nested_values(cli_args, lst=cfg)
+cfg <- modifyList(cfg, cli_args)
 
 input_regex <- cfg$input_regex
 if (checkmate::test_directory(cfg$input)) {
   # input is a directory -- find all relevant nifti files to postprocess
-  if (is.null(input_regex)) input_regex <- "_desc-preproc_bold.nii.gz"
-  input_files <- list.files(path=cfg$input, pattern=input_regex, recursive=TRUE)
-
-} else if (!checkmate::test_file_exists(input_file)) {
+  if (is.null(input_regex)) input_regex <- "_desc-preproc_bold.nii.gz$"
+  input_files <- list.files(path=cfg$input, pattern=input_regex, recursive=TRUE, full.names = TRUE)
+} else if (!checkmate::test_file_exists(cfg$input)) {
   stop("A valid 4D NIfTI file to process must be passed in as --input=<4d file>")
 } else {
   input_files <- cfg$input
@@ -64,7 +75,7 @@ if (length(input_files) == 0L) {
 cat("About to postprocess the following files: ")
 print(input_files)
 
-out_files <- sapply(input_files, function(ii) postprocess_subject(ii, cfg))
+out_files <- sapply(input_files, function(ii) BGprocess:::postprocess_subject(ii, cfg))
 cat("Processing completed. Output files: \n")
 print(out_files)
 
