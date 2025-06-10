@@ -956,6 +956,7 @@ run_fsl_command <- function(args, fsldir=NULL, echo=TRUE, run=TRUE, log_file=NUL
 
   #cat("FSL command: ", full_cmd, "\n")
   if (!is.null(log_file)) cat(args, file=log_file, append=TRUE, sep="\n")
+  # if (!is.null(log_file)) cat("# FULL CMD: ", full_cmd, file=log_file, append=TRUE, sep="\n")
   if (isTRUE(echo)) cat(args, "\n")
 
   retcode <- if (isTRUE(run)) system(full_cmd) else 0 # return 0 if not run
@@ -1081,10 +1082,10 @@ get_image_quantile <- function(in_file, brain_mask=NULL, quantile=50, exclude_ze
   checkmate::assert_number(quantile, lower = 0, upper = 100)
   pstr <- ifelse(isTRUE(exclude_zero), "-P", "-p")
   if (is.null(brain_mask)) {
-     quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} {pstr} {quantile}"), intern = TRUE, log_file = log_file, fsl_img = fsl_img))
+     quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} {pstr} {quantile}"), intern = TRUE, log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(in_file)))
   } else {
     if (!checkmate::test_file_exists(brain_mask)) checkmate::assert_file_exists(paste0(brain_mask, ".nii.gz"))
-    quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} -k {brain_mask} {pstr} {quantile}"), intern = TRUE, log_file = log_file, fsl_img = fsl_img))
+    quantile_value <- as.numeric(run_fsl_command(glue("fslstats {in_file} -k {brain_mask} {pstr} {quantile}"), intern = TRUE, log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(in_file)))
   }
   return(quantile_value)
 }
@@ -1106,33 +1107,78 @@ to_log <- function(str=NULL, log_file=NULL, stdout=TRUE) {
   return(invisible(NULL))
 }
 
-out_file_exists <- function(in_file, prefix, overwrite=TRUE) {
-  # helper subfunction to enforce hyphen after initial postprocessing prefix
-  p <- function(in_file, prefix) {
-    has_prefix <- grepl("^\\w+-(sub|confounds).*", in_file, perl = TRUE)
-    if (isTRUE(has_prefix)) {
-      return(prefix)
-    } else {
-      return(paste0(prefix, "-")) # need to append hyphen
-    }
-  }
+#' Check for Existence of a BIDS-Formatted Output File with a given description
+#'
+#' This function constructs a BIDS-compliant filename based on an input file, replacing
+#' the `desc` field with a specified `description`, and checks whether the corresponding output file
+#' already exists. If the file exists and `overwrite = FALSE`, the function returns `skip = TRUE`.
+#'
+#' @param in_file Path to the input BIDS file (e.g., a preprocessed BOLD image).
+#' @param description Character string to use as the new `desc` field in the expected output file.
+#' @param overwrite Logical. If `FALSE`, existing files will not be overwritten.
+#' @param prepend Logical. If `TRUE`, prepend the `description` to the existing description to build a compound description
+#'
+#' @return A list with elements:
+#'   \item{out_file}{Path to the expected output file.}
+#'   \item{skip}{Logical indicating whether to skip writing due to file existence.}
+#'
+#' @importFrom checkmate assert_file_exists assert_string assert_flag test_file_exists
+#' @importFrom glue glue
+#' @keywords internal
+out_file_exists <- function(in_file, description, overwrite = TRUE, prepend=TRUE) {
+  checkmate::assert_file_exists(in_file)
+  checkmate::assert_string(description)
+  checkmate::assert_flag(overwrite)
+  checkmate::assert_flag(prepend)
 
-  in_dir <- dirname(in_file)
-  in_file <- basename(in_file)
+  # Parse and update BIDS fields
+  bids_info <- extract_bids_info(in_file)
+  bids_info$description <- if (prepend) paste0(bids_info$description, description) else description # set desc to new description
 
-  # handle extant file
-  out_file <- glue("{in_dir}/{p(in_file, prefix)}{in_file}")
+  # Reconstruct filename
+  out_file <- file.path(dirname(in_file), construct_bids_filename(bids_info))
+
+  # Check if file exists and whether to skip
   skip <- FALSE
   if (checkmate::test_file_exists(out_file)) {
     if (isFALSE(overwrite)) {
-      message(glue("Processed image already exists: {out_file}. Skipping this step."))
+      message(glue::glue("Processed file already exists: {out_file}. Skipping this step."))
       skip <- TRUE
     } else {
-      message(glue("Overwriting image: {out_file}."))
+      message(glue::glue("Overwriting existing file: {out_file}."))
     }
   }
-  return(list(out_file=out_file, skip=skip))
+
+  return(list(out_file = out_file, skip = skip))
 }
+
+# out_file_exists <- function(in_file, prefix, overwrite=TRUE) {
+#   # helper subfunction to enforce hyphen after initial postprocessing prefix
+#   p <- function(in_file, prefix) {
+#     has_prefix <- grepl("^\\w+-(sub|confounds).*", in_file, perl = TRUE)
+#     if (isTRUE(has_prefix)) {
+#       return(prefix)
+#     } else {
+#       return(paste0(prefix, "-")) # need to append hyphen
+#     }
+#   }
+
+#   in_dir <- dirname(in_file)
+#   in_file <- basename(in_file)
+
+#   # handle extant file
+#   out_file <- glue("{in_dir}/{p(in_file, prefix)}{in_file}")
+#   skip <- FALSE
+#   if (checkmate::test_file_exists(out_file)) {
+#     if (isFALSE(overwrite)) {
+#       message(glue("Processed image already exists: {out_file}. Skipping this step."))
+#       skip <- TRUE
+#     } else {
+#       message(glue("Overwriting image: {out_file}."))
+#     }
+#   }
+#   return(list(out_file=out_file, skip=skip))
+# }
 
 #' Identify fMRIPrep-Derived Outputs for a NIfTI File
 #'

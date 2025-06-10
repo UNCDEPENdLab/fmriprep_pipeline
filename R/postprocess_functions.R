@@ -1,3 +1,85 @@
+#' Resample TemplateFlow Mask to fMRIPrep Image Using Python
+#'
+#' @param fmriprep_file Path to the fMRIPrep-derived NIfTI file.
+#' @param output Path to output resampled image.
+#' @param transform Optional path to inverse transform (for native-space images).
+#' @param template_resolution Resolution index (e.g., 1 = 1mm).
+#' @param template_space TemplateFlow space (e.g., "MNI152NLin2009cAsym").
+#' @param suffix TemplateFlow suffix (e.g., "mask", "T1w").
+#' @param desc TemplateFlow descriptor (e.g., "brain").
+#' @param extension File extension (default: ".nii.gz").
+#' @param interpolation Interpolation method ("nearest", "linear", "continuous").
+#'
+#' @return Invisible `TRUE` on success. Writes output to `output`.
+#' @importFrom reticulate source_python
+#' @export
+resample_template_r <- function(
+  fmriprep_file,
+  output,
+  template_resolution = 1,
+  template_space = "MNI152NLin2009cAsym",
+  suffix = "mask",
+  desc = "brain",
+  extension = ".nii.gz",
+  interpolation = "nearest",
+  install_dependencies = TRUE
+) {
+  checkmate::assert_file_exists(fmriprep_file)
+  checkmate::assert_string(output)
+  checkmate::assert_string(template_space)
+  checkmate::assert_flag(install_dependencies)
+
+  required_modules <- c("nibabel", "nilearn", "templateflow")
+  missing <- required_modules[!vapply(required_modules, reticulate::py_module_available, logical(1))]
+
+  if (length(missing) > 0) {
+    if (install_dependencies) {
+      message("Installing missing Python packages into the active environment...")
+      reticulate::py_install(missing)
+    } else {
+      stop(
+        "The following required Python modules are missing: ", paste(missing, collapse = ", "), "\n",
+        "Please install them in your Python environment (e.g., with pip or reticulate::virtualenv_install).",
+        call. = FALSE
+      )
+    }
+    
+  }
+
+  # Load Python module from script
+  script_path <- system.file("fetch_matched_template_image.py", package = "BGprocess")
+  if (!file.exists(script_path)) stop("Required python script not found: ", script_path)
+  reticulate::source_python(script_path)
+
+  img <- resample_template_to_bold(
+    fmriprep_file = fmriprep_file,
+    output = output,
+    transform = transform,
+    template_resolution = template_resolution,
+    template_space = template_space,
+    suffix = suffix,
+    desc = desc,
+    extension = extension,
+    interpolation = interpolation
+  )
+
+  return(invisible(img))
+}
+
+get_template_mask <- function(in_file, log_file) {
+  script <- system.file("fetch_matched_template_image.py", package = "BGprocess")
+  if (!file.exists(script)) stop("Cannot find fetch_matched_template_image.py")
+  f_info <- as.list(get_bids_info(in_file))
+  maskname <- file.path(dirname(in_file), construct_bids_filename(modifyList(f_info, list(suffix = "templatemask"))))
+
+  if (!file.exists(maskname)) {
+    message("Template mask not found, creating a new one.")
+    system("python", args = c(script, in_file, maskname), stdout = log_file, stderr = log_file)
+  }
+
+  return(maskname)
+
+}
 
 ### primary function to process a given fmriprep subject dataset
 postprocess_subject <- function(in_file, cfg=NULL) {
@@ -7,12 +89,16 @@ postprocess_subject <- function(in_file, cfg=NULL) {
   # checkmate::assert_list(processing_sequence)
   proc_files <- get_fmriprep_outputs(in_file)
 
+  # determine if input is in a stereotaxic space
+  bids_info <- as.list(get_bids_info(in_file))
+  native_space <- is.na(bids_info$space) || bids_info$space %in% c("T1w", "T2w", "anat")
+
   # default configuration settings -- not sure whether this should be allowed?
   default_cfg <- list(
     tr = NULL,
     force_processing_order = FALSE,
     log_file = "{proc_files$prefix}_post_fmriprep.log",
-    brain_mask = "{proc_files$brain_mask}",
+    brain_mask = "template",
     overwrite = FALSE, keep_intermediates = FALSE,
     processing_steps = c(
       "apply_mask", "spatial_smooth", "apply_aroma",
@@ -63,17 +149,29 @@ postprocess_subject <- function(in_file, cfg=NULL) {
   to_log(paste0("# Start fmriprep postprocessing: ", as.character(start_time)), log_file = log_file)
   
   # determine brain mask to be used for computing intensity thresholds for susan and normalization
-  if (is.null(cfg$brain_mask) || is.na(cfg$brain_mask[1L])) {
-    # if no brain mask is provided, use fmriprep brain mask
-    if (!is.null(proc_files$brain_mask)) {
-      brain_mask <- proc_files$brain_mask
+  # Step 1: Handle user-specified brain mask
+  brain_mask <- NULL
+  if (checkmate::test_string(cfg$brain_mask)) {
+    if (cfg$brain_mask == "template") {
+      brain_mask <- get_template_mask(in_file, log_file)
+    } else if (checkmate::test_file_exists(cfg$brain_mask)) {
+      brain_mask <- cfg$brain_mask
     } else {
-      # if fmriprep mask is not available, compute mask
-      brain_mask <- compute_brain_mask(in_file, log_file)
+      warning("Cannot find brain_mask: ", cfg$brain_mask, ". Will try to find an alternative.")
     }
-  } else {
-    # use user-specified brain mask
-    brain_mask <- glue(cfg$brain_mask)
+  }
+
+  # Step 2: Handle fallback cases (if user input was invalid or unspecified)
+  if (is.null(brain_mask)) {
+    if (native_space) {
+      if (!is.null(proc_files$brain_mask)) {
+        brain_mask <- proc_files$brain_mask # fixed typo here
+      } else {
+        brain_mask <- compute_brain_mask(in_file, log_file)
+      }
+    } else {
+      brain_mask <- get_template_mask(in_file, log_file)
+    }
   }
 
   cur_file <- proc_files$bold
@@ -199,7 +297,7 @@ postprocess_subject <- function(in_file, cfg=NULL) {
       file_set <- c(file_set, cur_file)
     } else if (step == "temporal_filter") {
       proc_prefix <- paste0(cfg$temporal_filter$prefix, proc_prefix)
-      to_log(glue("# Temporal filtering with lp: {cfg$temporal_filter$low_pass_hz}Hz, hp: {cfg$temporal_filter$high_pass_hz}Hz given TR: {cfg$tr}"), log_file = log_file)
+      to_log(glue("# Temporal filtering with lp: {cfg$temporal_filter$low_pass_hz} Hz, hp: {cfg$temporal_filter$high_pass_hz} Hz given TR: {cfg$tr}"), log_file = log_file)
       cur_file <- temporal_filter(cur_file, prefix = cfg$temporal_filter$prefix,
         tr = cfg$tr, low_pass_hz = cfg$temporal_filter$low_pass_hz,
         high_pass_hz = cfg$temporal_filter$high_pass_hz,
@@ -579,6 +677,7 @@ confound_regression <- function(in_file, to_regress=NULL, prefix="r", overwrite=
 #'
 #' @param in_file Path to the input 4D NIfTI functional image.
 #' @param log_file Optional path to a log file for command output.
+#' @param fsl_img Optional Singularity image to execute FSL commands in a containerized environment.
 #'
 #' @return File path to the computed binary brain mask (not yet dilated). A dilated version
 #'   of the mask is also saved with a `_dil1x` suffix.
@@ -589,14 +688,14 @@ confound_regression <- function(in_file, to_regress=NULL, prefix="r", overwrite=
 #'   binarizing, and performing one dilation iteration.
 #'
 #' @keywords internal
-compute_brain_mask <- function(in_file, log_file = NULL) {
+compute_brain_mask <- function(in_file, log_file = NULL, fsl_img = NULL) {
   # use the 98 - 2 method from FSL (featlib.tcl ca. line 5345)
 
   to_log("# Computing brain mask from fMRI data using FSL's 98-2 percentile method", log_file=log_file)
 
   # first use FSL bet on the mean functional to get a starting point
   tmean_file <- tempfile(pattern="tmean")
-  run_fsl_command(glue("fslmaths {in_file} -Tmean {tmean_file}"), log_file = log_file, fsl_img, bind_paths=dirname(c(in_file, tmean_file)))
+  run_fsl_command(glue("fslmaths {in_file} -Tmean {tmean_file}"), log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(c(in_file, tmean_file)))
   
   temp_bet <- tempfile()
   run_fsl_command(glue("bet {tmean_file} {temp_bet} -R -f 0.3 -m -n"), log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(c(tmean_file, temp_bet)))

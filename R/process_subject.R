@@ -329,6 +329,8 @@ submit_aroma <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env
   return(job_id)
 }
 
+# TODO: make a simple worker that looks at the target directory, then spawns one job per file, not per folder (since postproc is by file)
+# we can't do that here because the required files may not have been run yet (fmriprep etc.)
 
 submit_postprocess <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NULL, env_variables = NULL, sched_script = NULL, sched_args = NULL, parent_ids = NULL, lg = NULL) {
 
@@ -338,7 +340,8 @@ submit_postprocess <- function(scfg, sub_dir = NULL, sub_id = NULL, ses_id = NUL
   # postprocessing
   scfg$postprocess$input <- file.path(scfg$fmriprep_directory, glue("sub-{sub_id}")) # populate the location of this sub/ses dir into the config to pass on as CLI
   if (!is.null(ses_id) && !is.na(ses_id)) scfg$postprocess$input <- file.path(scfg$postprocess$input, glue("ses-{ses_id}")) # add session subdir if relevant
-  scfg$postprocess$fsl_img <- scfg$compute_environment$fmriprep_container # always pass fmriprep container for running FSL commands in postprocessing
+  #scfg$postprocess$fsl_img <- scfg$compute_environment$fmriprep_container # always pass fmriprep container for running FSL commands in postprocessing
+  scfg$postprocess$fsl_img <- scfg$compute_environment$aroma_container # always pass aroma container for running FSL commands in postprocessing
   postproc_cli <- nested_list_to_args(scfg$postprocess, collapse=TRUE) # convert postprocess config into CLI args
   
   env_variables <- c(

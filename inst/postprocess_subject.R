@@ -57,6 +57,8 @@ if (!is.null(cli_args$config_yaml)) {
 # Now add additional command line arguments to cfg -- this leads any settings in YAML to be overridden by the same CLI arguments
 cfg <- modifyList(cfg, cli_args)
 
+if (!checkmate::test_string(cfg$input)) stop("A valid --input must be provided pointing either to a folder with data to postprocess or to a single 4D NIfTI file")
+
 input_regex <- cfg$input_regex
 if (checkmate::test_directory(cfg$input)) {
   # input is a directory -- find all relevant nifti files to postprocess
@@ -65,7 +67,7 @@ if (checkmate::test_directory(cfg$input)) {
 } else if (!checkmate::test_file_exists(cfg$input)) {
   stop("A valid 4D NIfTI file to process must be passed in as --input=<4d file>")
 } else {
-  input_files <- cfg$input
+  input_files <- cfg$input # single file input
 }
 
 if (length(input_files) == 0L) {
