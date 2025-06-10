@@ -74,7 +74,7 @@ run_study <- function(scfg, steps=NULL, prompt = TRUE, debug = FALSE, force = FA
     steps["fmriprep"] <- ifelse(is.null(scfg$compute_environment$fmriprep_container), FALSE, prompt_input(instruct = "Run fmriprep?", type = "flag"))
     steps["aroma"] <- ifelse(is.null(scfg$compute_environment$aroma_container) && isTRUE(scfg$run_aroma), FALSE, prompt_input(instruct = "Run ICA-AROMA?", type = "flag"))
     steps["postprocess"] <- ifelse(is.null(scfg$postprocess$processing_steps), FALSE, prompt_input(instruct = "Run postprocessing?", type = "flag"))
-    if (isFALSE(run_aroma) && "apply_aroma" %in% scfg$postprocess$processing_steps) {
+    if (isFALSE(steps["aroma"]) && "apply_aroma" %in% scfg$postprocess$processing_steps) {
       warning(
         "Postprocessing includes the removal of motion-related AROMA components from the fMRI data, but you declined ",
         "to run AROMA as part of the pipeline. Postprocessing will likely fail if AROMA components cannot be found."

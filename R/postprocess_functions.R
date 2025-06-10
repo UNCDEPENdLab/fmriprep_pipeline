@@ -289,7 +289,7 @@ apply_mask <- function(in_file, mask_file, prefix="m", overwrite=FALSE, log_file
     out_file <- res$out_file
   }
 
-  run_fsl_command(glue("fslmaths {in_file} -mas {mask_file} {out_file} -odt float"), log_file = log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -mas {mask_file} {out_file} -odt float"), log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(c(in_file, mask_file, out_file)))
   return(out_file)
 }
 
@@ -352,9 +352,9 @@ temporal_filter <- function(in_file, prefix="f", low_pass_hz=0, high_pass_hz=1/1
   }
 
   temp_tmean <- tempfile(pattern="tmean")
-  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file=log_file, fsl_img = fsl_img)
-  run_fsl_command(glue("fslmaths {in_file} -bptf {hp_volumes} {lp_volumes} -add {temp_tmean} {out_file}"), log_file = log_file, fsl_img = fsl_img)
-  
+  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file=log_file, fsl_img = fsl_img, bind_paths=dirname(c(in_file, temp_tmean)))
+  run_fsl_command(glue("fslmaths {in_file} -bptf {hp_volumes} {lp_volumes} -add {temp_tmean} {out_file}"), log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(c(in_file, temp_tmean, out_file)))
+
   rm_niftis(temp_tmean) # clean up temporal mean image
   
   return(out_file)
@@ -413,7 +413,7 @@ apply_aroma <- function(in_file, prefix = "a", mixing_file, noise_ics, overwrite
     system(cmd)
   } else {
     cmd <- glue("fsl_regfilt -i {in_file} -o {out_file} -d {mixing_file} -f {noise_ics}")
-    run_fsl_command(cmd, log_file = log_file, fsl_img = fsl_img)
+    run_fsl_command(cmd, log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(c(in_file, mixing_file, out_file)))
   }
   return(out_file)
 }
@@ -445,8 +445,6 @@ spatial_smooth <- function(in_file, prefix = "s", fwhm_mm = 6, brain_mask = NULL
   checkmate::assert_string(prefix)
   checkmate::assert_number(fwhm_mm, lower = 0.1)
 
-  browser()
-
   # handle extant file
   res <- out_file_exists(in_file, prefix, overwrite)
   if (isTRUE(res$skip)) {
@@ -464,15 +462,15 @@ spatial_smooth <- function(in_file, prefix = "s", fwhm_mm = 6, brain_mask = NULL
 
   # always compute extents mask that is reapplied to data post-smoothing to avoid any "new" voxels
   extents_mask <- tempfile(pattern = "extents_mask")
-  run_fsl_command(glue("fslmaths {in_file} -Tmin -bin {extents_mask} -odt char"), log_file = log_file, fsl_img = fsl_img) # save extents to temp file
+  run_fsl_command(glue("fslmaths {in_file} -Tmin -bin {extents_mask} -odt char"), log_file = log_file, fsl_img = fsl_img, bind_paths = dirname(c(in_file, extents_mask))) # save extents to temp file
 
   # compute mean functional image used in susan
   temp_tmean <- tempfile(pattern = "tmean")
-  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file = log_file, fsl_img = fsl_img) # save tmean to temporary file
-  run_fsl_command(glue("susan {in_file} {susan_thresh} {sigma} 3 1 1 {temp_tmean} {susan_thresh} {out_file}"), log_file = log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file = log_file, fsl_img = fsl_img, bind_paths = dirname(c(in_file, temp_tmean))) # save tmean to temporary file
+  run_fsl_command(glue("susan {in_file} {susan_thresh} {sigma} 3 1 1 {temp_tmean} {susan_thresh} {out_file}"), log_file = log_file, fsl_img = fsl_img, bind_paths = dirname(c(in_file, temp_tmean, out_file)))
 
   # apply extents mask
-  run_fsl_command(glue("fslmaths {out_file} -mul {extents_mask} {out_file} -odt float"), log_file = log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("fslmaths {out_file} -mul {extents_mask} {out_file} -odt float"), log_file = log_file, fsl_img = fsl_img, bind_paths = dirname(c(in_file, extents_mask, out_file)))
 
   rm_niftis(c(temp_tmean, extents_mask, glue("{out_file}_usan_size"))) # cleanup temp files
 
@@ -517,7 +515,7 @@ intensity_normalize <- function(in_file, prefix="n", brain_mask=NULL, global_med
   median_intensity <- get_image_quantile(in_file, brain_mask, 50, log_file=log_file, fsl_img=fsl_img)
   rescaling_factor <- global_median / median_intensity
 
-  run_fsl_command(glue("fslmaths {in_file} -mul {rescaling_factor} {out_file} -odt float"), log_file=log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -mul {rescaling_factor} {out_file} -odt float"), log_file=log_file, fsl_img = fsl_img, bind_paths=dirname(c(in_file, out_file)))
   return(out_file)
 }
 
@@ -557,13 +555,13 @@ confound_regression <- function(in_file, to_regress=NULL, prefix="r", overwrite=
 
   # convert text file to FSL vest file for fsl_glm to accept it
   vest_file <- tempfile(pattern = "regressors", fileext = ".mat")
-  run_fsl_command(glue("Text2Vest {to_regress} {vest_file}"), log_file = log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("Text2Vest {to_regress} {vest_file}"), log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(c(to_regress, vest_file)))
   
   # because the residuals will be demeaned and intensity normalization should follow this step, add back in the temporal mean from the pre-regression image
   temp_tmean <- tempfile(pattern="tmean")
-  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file=log_file, fsl_img = fsl_img)
-  run_fsl_command(glue("fsl_glm -i {in_file} -d {vest_file} --out_res={out_file}"), log_file = log_file, fsl_img = fsl_img)
-  run_fsl_command(glue("fslmaths {out_file} -add {temp_tmean} {out_file}"), log_file=log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("fslmaths {in_file} -Tmean {temp_tmean}"), log_file=log_file, fsl_img = fsl_img, bind_paths=dirname(c(in_file, temp_tmean)))
+  run_fsl_command(glue("fsl_glm -i {in_file} -d {vest_file} --out_res={out_file}"), log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(c(in_file, vest_file, out_file)))
+  run_fsl_command(glue("fslmaths {out_file} -add {temp_tmean} {out_file}"), log_file=log_file, fsl_img = fsl_img, bind_paths=dirname(c(out_file, temp_tmean)))
 
   # 3dTproject for regression (deprecated to keep all commands in FSL)
   # regress_cmd <- glue("3dTproject -input {in_file} -prefix {out_file}_afni -ort {to_regress} -polort 0")
@@ -598,26 +596,26 @@ compute_brain_mask <- function(in_file, log_file = NULL) {
 
   # first use FSL bet on the mean functional to get a starting point
   tmean_file <- tempfile(pattern="tmean")
-  run_fsl_command(glue("fslmaths {in_file} -Tmean {tmean_file}"), log_file = log_file, fsl_imgmg)
+  run_fsl_command(glue("fslmaths {in_file} -Tmean {tmean_file}"), log_file = log_file, fsl_img, bind_paths=dirname(c(in_file, tmean_file)))
   
   temp_bet <- tempfile()
-  run_fsl_command(glue("bet {tmean_file} {temp_bet} -R -f 0.3 -m -n"), log_file = log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("bet {tmean_file} {temp_bet} -R -f 0.3 -m -n"), log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(c(tmean_file, temp_bet)))
 
   temp_stripped <- tempfile(pattern="epi_bet")
-  run_fsl_command(glue("fslmaths {in_file} -mas {temp_bet}_mask {temp_stripped}"), log_file = log_file, fsl_imgmg)
+  run_fsl_command(glue("fslmaths {in_file} -mas {temp_bet}_mask {temp_stripped}"), log_file = log_file, fsl_img, bind_paths=dirname(c(in_file, temp_bet, temp_stripped)))
 
   # now compute 2nd and 98th percentiles on skull-stripped image
-  p2 <- get_image_quantile(temp_stripped, quantile=2, exclude_zero = FALSE, log_file = log_file, fsl_img = fsl_img)
-  p98 <- get_image_quantile(temp_stripped, quantile=98, exclude_zero = FALSE, log_file = log_file, fsl_img = fsl_img)
+  p2 <- get_image_quantile(temp_stripped, quantile=2, exclude_zero = FALSE, log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(temp_stripped))
+  p98 <- get_image_quantile(temp_stripped, quantile=98, exclude_zero = FALSE, log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(temp_stripped))
   
   thresh <- p2 + (p98 - p2)/10
 
   # apply this threshold to the epi_bet image, then take Tmin and binarize to form mask
   temp_mask <- tempfile(pattern = "mask_98_2")
-  run_fsl_command(glue("fslmaths {temp_stripped} -thr {thresh} -Tmin -bin {temp_mask}"), log_file=log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("fslmaths {temp_stripped} -thr {thresh} -Tmin -bin {temp_mask}"), log_file=log_file, fsl_img = fsl_img, bind_paths=dirname(c(temp_stripped, temp_mask)))
 
   # create dil1x copy as well if this is used elsewhere
-  run_fsl_command(glue("fslmaths {temp_mask} -dilF {temp_mask}_dil1x"), log_file = log_file, fsl_img = fsl_img)
+  run_fsl_command(glue("fslmaths {temp_mask} -dilF {temp_mask}_dil1x"), log_file = log_file, fsl_img = fsl_img, bind_paths=dirname(temp_mask))
 
   # cleanup temp files
   rm_niftis(c(tmean_file, temp_bet, temp_stripped))

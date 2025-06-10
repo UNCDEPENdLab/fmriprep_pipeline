@@ -892,7 +892,7 @@ rm_niftis <- function(files=NULL) {
   }
 }
 
-run_fsl_command <- function(args, fsldir=NULL, echo=TRUE, run=TRUE, log_file=NULL, intern=FALSE, stop_on_fail=TRUE, fsl_img=NULL) {
+run_fsl_command <- function(args, fsldir=NULL, echo=TRUE, run=TRUE, log_file=NULL, intern=FALSE, stop_on_fail=TRUE, fsl_img=NULL, bind_paths=NULL) {
   
   if (!is.null(fsl_img)) {
     # if we are using a singularity container, always look inside the container for FSLDIR
@@ -934,11 +934,13 @@ run_fsl_command <- function(args, fsldir=NULL, echo=TRUE, run=TRUE, log_file=NUL
   base_cmd <- paste0(fslsetup, args)
 
   if (!is.null(fsl_img)) {
-    # Get absolute working directory to mount
-    workdir <- normalizePath(getwd())
+    # Get absolute working directory and always make this available to singularity
+    bind_paths <- unique(c(bind_paths, getwd(), tempdir()))
+    bind_str <- paste(sapply(bind_paths, function(x) paste0("-B ", normalizePath(x))), collapse = " ")
+    
     singularity_cmd <- paste(
       "singularity exec",
-      paste0("--bind ", workdir, ":", workdir),
+      bind_str,
       fsl_img,
       "bash -c",
       shQuote(base_cmd)
@@ -1019,7 +1021,7 @@ mat_to_nii <- function(mat, ni_out="mat", fsl_img=NULL) {
   tr <- 1
   xorigin <- yorigin <- zorigin <- 0
 
-  run_fsl_command(glue("fslcreatehd {ncol(mat)} {ydim} {zdim} {nrow(mat)} {xsz} {ysz} {zsz} {tr} {xorigin} {yorigin} {zorigin} 64 {ni_out}"), fsl_img = fsl_img)
+  run_fsl_command(glue("fslcreatehd {ncol(mat)} {ydim} {zdim} {nrow(mat)} {xsz} {ysz} {zsz} {tr} {xorigin} {yorigin} {zorigin} 64 {ni_out}"), fsl_img = fsl_img, bind_paths=dirname(ni_out))
 
   ## read empty NIfTI into R
   nif <- readNIfTI(ni_out, reorient = FALSE)
