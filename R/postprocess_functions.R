@@ -1,6 +1,6 @@
 #' Resample TemplateFlow Mask to fMRIPrep Image Using Python
 #'
-#' @param fmriprep_file Path to the fMRIPrep-derived NIfTI file.
+#' @param in_file Path to the fMRIPrep-derived NIfTI file.
 #' @param output Path to output resampled image.
 #' @param transform Optional path to inverse transform (for native-space images).
 #' @param template_resolution Resolution index (e.g., 1 = 1mm).
@@ -14,8 +14,8 @@
 #' @importFrom reticulate source_python
 #' @export
 resample_template_r <- function(
-  fmriprep_file,
-  output,
+  in_file,
+  output = NULL,
   template_resolution = 1,
   template_space = "MNI152NLin2009cAsym",
   suffix = "mask",
@@ -24,10 +24,16 @@ resample_template_r <- function(
   interpolation = "nearest",
   install_dependencies = TRUE
 ) {
-  checkmate::assert_file_exists(fmriprep_file)
-  checkmate::assert_string(output)
+  checkmate::assert_file_exists(in_file)
+  checkmate::assert_string(output, null.ok = TRUE)
   checkmate::assert_string(template_space)
   checkmate::assert_flag(install_dependencies)
+
+  # default to same name as input file, but change suffix to templatemask
+  if (is.null(output)) {
+    f_info <- as.list(extract_bids_info(in_file))
+    output <- file.path(dirname(in_file), construct_bids_filename(modifyList(f_info, list(suffix = "templatemask"))))
+  }
 
   required_modules <- c("nibabel", "nilearn", "templateflow")
   missing <- required_modules[!vapply(required_modules, reticulate::py_module_available, logical(1))]
@@ -52,7 +58,7 @@ resample_template_r <- function(
   reticulate::source_python(script_path)
 
   img <- resample_template_to_bold(
-    fmriprep_file = fmriprep_file,
+    in_file = in_file,
     output = output,
     transform = transform,
     template_resolution = template_resolution,
@@ -69,7 +75,7 @@ resample_template_r <- function(
 get_template_mask <- function(in_file, log_file) {
   script <- system.file("fetch_matched_template_image.py", package = "BGprocess")
   if (!file.exists(script)) stop("Cannot find fetch_matched_template_image.py")
-  f_info <- as.list(get_bids_info(in_file))
+  f_info <- as.list(extract_bids_info(in_file))
   maskname <- file.path(dirname(in_file), construct_bids_filename(modifyList(f_info, list(suffix = "templatemask"))))
 
   if (!file.exists(maskname)) {
@@ -90,7 +96,7 @@ postprocess_subject <- function(in_file, cfg=NULL) {
   proc_files <- get_fmriprep_outputs(in_file)
 
   # determine if input is in a stereotaxic space
-  bids_info <- as.list(get_bids_info(in_file))
+  bids_info <- as.list(extract_bids_info(in_file))
   native_space <- is.na(bids_info$space) || bids_info$space %in% c("T1w", "T2w", "anat")
 
   # default configuration settings -- not sure whether this should be allowed?

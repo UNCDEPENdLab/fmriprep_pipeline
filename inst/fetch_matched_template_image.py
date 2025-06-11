@@ -25,12 +25,12 @@ def fetch_template_image(template, resolution, suffix, desc=None, extension=".ni
         extension=extension
     )
 
-def resample_template_to_bold(fmriprep_file, output, template_resolution=1, template_space="MNI152NLin2009cAsym",
+def resample_template_to_bold(in_file, output, template_resolution=1, template_space="MNI152NLin2009cAsym",
     suffix="mask", desc="brain", extension=".nii.gz", interpolation="nearest"):
     
-    space = parse_space_from_filename(fmriprep_file)
+    space = parse_space_from_filename(in_file)
     
-    bold_img = nib.load(fmriprep_file)
+    bold_img = nib.load(in_file)
     resolution = get_voxel_resolution(bold_img)
     print(f"Detected space: {space}, resolution: {resolution}")
 
